@@ -1,0 +1,13 @@
+---
+name: mimsy-measurements
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python>=3.13,<3.14
+  - polars>=1.24,<2
+  - pyparsing>=3.2,<4
+  - jupytext==1.16.7
+  - pip
+  - pip:
+    - oracledb==3.0.0
