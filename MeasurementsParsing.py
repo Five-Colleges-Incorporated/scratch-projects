@@ -50,12 +50,10 @@ query = "SELECT M_ID, MEASUREMENTS FROM CATALOGUE WHERE MEASUREMENTS IS NOT NULL
 # %%
 import polars as pl
 
+
 def measurements():
     return pl.read_database(
-    connection=mimsy,
-    query=query,
-    iter_batches=True,
-    batch_size=500
+        connection=mimsy, query=query, iter_batches=True, batch_size=500
     )
 
 
@@ -78,14 +76,17 @@ if is_notebook:
 # %%
 import pyparsing as pp
 
-dim =  pp.Group(
-        pp.Word(pp.nums + "." + "/" + " ").set_parse_action(pp.token_map(str.strip))("value")
-    + pp.Optional(pp.oneOf(["in", "ft", "cm", "m"])("unit") + pp.Optional(".")))
+dim = pp.Group(
+    pp.Word(pp.nums + "." + "/" + " ").set_parse_action(pp.token_map(str.strip))(
+        "value"
+    )
+    + pp.Optional(pp.oneOf(["in", "ft", "cm", "m"])("unit") + pp.Optional("."))
+)
 
 if is_notebook:
     (ok, res) = dim.run_tests(
         [
-            "15/16 in", 
+            "15/16 in",
             "5 3/4 in",
             "12 in",
             "14.6 cm",
@@ -111,10 +112,15 @@ vol = pp.Group(
 
 
 dimensions = pp.Group(
-    pp.Optional(pp.Group(
-        pp.Word(pp.alphanums + "/") + pp.Optional(pp.Combine("(" + pp.Word(pp.alphas + "-") + ")"))
-    )("type")
-    + pp.Suppress(":"))
+    pp.Optional(
+        pp.Group(
+            pp.Word(pp.alphanums + "/" + " ").set_parse_action(pp.token_map(str.strip))
+            + pp.Optional(pp.Suppress("-") + pp.Word(pp.alphas))
+            + pp.Optional(pp.Suppress(",") + pp.Word(pp.alphas))
+            + pp.Optional(pp.Combine("(" + pp.Word(pp.alphas + "-") + ")"))
+        )("type")
+        + pp.Suppress(":")
+    )
     + pp.OneOrMore(vol("measurements*") + pp.Suppress(pp.Optional(";")))
 )
 
@@ -130,6 +136,8 @@ if is_notebook:
             "Overall: 9 in; 22.9 cm",
             "canvas (semi-circular): 31 1/8 x 59 1/8 in.; 79.0575 x 150.1775 cm",
             "panel: 83 7/8 x 47 13/16 in.; 213.0425 x 121.4438 cm",
+            "image and sheet: 21 7/8 x 30 in.; 55.5625 x 76.2 cm",
+            "Center Back - CB: 21 in x 21 1/2 in; 53.3 cm x 54.6 cm",
         ],
         print_results=False,
         full_dump=False,
@@ -141,8 +149,12 @@ mimsy_string = pp.OneOrMore(dimensions("dimensions*"))
 if is_notebook:
     mimsy_string.create_diagram("parser.html", show_results_names=True)
 
-    print(mimsy_string.parse_string("canvas (semi-circular): 31 1/8 x 59 1/8 in.; 79.0575 x 150.1775 cm"))
-    
+    ex = mimsy_string.parse_string(
+            "canvas (semi-circular): 31 1/8 x 59 1/8 in.; 79.0575 x 150.1775 cm",
+    )
+    print(ex)
+    print(ex.as_dict())
+
     (ok, res) = mimsy_string.run_tests(
         """
 
