@@ -12,3 +12,6 @@ dependencies:
   - pip
   - pip:
     - oracledb==3.0.0
+    # Optional for pyparsing diagram support
+    - jinja2
+    - railroad-diagrams
