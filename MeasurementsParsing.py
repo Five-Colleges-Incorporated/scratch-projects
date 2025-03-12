@@ -53,7 +53,7 @@ dim = pp.Group(
     (
         pp.Group(
             pp.Word(pp.nums)("whole")
-            + pp.Group(
+            + pp.Combine(
                 pp.Optional("." + pp.Word(pp.nums))
                 + pp.Optional(pp.Word(pp.nums) + "/" + pp.Word(pp.nums))
             )("fraction")
@@ -76,9 +76,9 @@ vol = pp.Group(
 
 
 dimensions = pp.Group(
-    pp.Group(pp.Word(pp.alphas) + pp.Optional("(" + pp.Char(pp.alphas) + ")"))("type")
+    pp.Group(pp.Word(pp.alphas) + pp.Optional(pp.Combine("(" + pp.Word(pp.alphas) + ")")))("type")
     + ":"
-    + pp.OneOrMore(vol("measurements") + pp.Suppress(pp.Optional(";")))
+    + pp.OneOrMore(vol("measurements*") + pp.Suppress(pp.Optional(";")))
 )
 
 if is_notebook:
