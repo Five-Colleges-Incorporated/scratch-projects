@@ -45,15 +45,15 @@ mimsy.is_healthy()
 
 # %%
 # query = "SELECT M_ID, MEASUREMENTS FROM CATALOGUE WHERE MEASUREMENTS IS NOT NULL FETCH NEXT 10 ROWS ONLY"
-query = "SELECT M_ID, MEASUREMENTS FROM CATALOGUE WHERE MEASUREMENTS IS NOT NULL ORDER BY M_ID ASC"
+query = "SELECT M_ID, MEASUREMENTS FROM CATALOGUE WHERE M_ID > {0} AND MEASUREMENTS IS NOT NULL ORDER BY M_ID ASC"
 
 # %%
 import polars as pl
 
 
-def measurements():
+def measurements(last=0):
     return pl.read_database(
-        connection=mimsy, query=query, iter_batches=True, batch_size=500
+        connection=mimsy, query=query.format(last), iter_batches=True, batch_size=500
     )
 
 
@@ -114,10 +114,10 @@ vol = pp.Group(
 dimensions = pp.Group(
     pp.Optional(
         pp.Group(
-            pp.Word(pp.alphanums + "/" + " ").set_parse_action(pp.token_map(str.strip))
-            + pp.Optional(pp.Suppress("-") + pp.Word(pp.alphas))
-            + pp.Optional(pp.Suppress(",") + pp.Word(pp.alphas))
-            + pp.Optional(pp.Combine("(" + pp.Word(pp.alphas + "-") + ")"))
+            pp.Word(pp.alphanums + "/" + "-" + "&" + " ").set_parse_action(pp.token_map(str.strip))
+            + pp.Optional(pp.Suppress(";") + pp.Word(pp.alphas + "-"))
+            + pp.Optional(pp.Suppress(",") + pp.Word(pp.alphas + " ").set_parse_action(pp.token_map(str.strip)))
+            + pp.Optional(pp.Combine("(" + pp.Word(pp.alphas + "-" + " ").set_parse_action(pp.token_map(str.strip)) + ")"))
         )("type")
         + pp.Suppress(":")
     )
@@ -135,9 +135,12 @@ if is_notebook:
             "Sheet/Image: 5 x 7 1/4 in; 12.7 x 18.4 cm",
             "Overall: 9 in; 22.9 cm",
             "canvas (semi-circular): 31 1/8 x 59 1/8 in.; 79.0575 x 150.1775 cm",
-            "panel: 83 7/8 x 47 13/16 in.; 213.0425 x 121.4438 cm",
+            "u-shaped: 103 x 111 in.; 261.62 x 281.94 cm",
             "image and sheet: 21 7/8 x 30 in.; 55.5625 x 76.2 cm",
-            "Center Back - CB: 21 in x 21 1/2 in; 53.3 cm x 54.6 cm",
+            "Overall (right boot): 10 1/4 in x 4 1/2 in x 12 in; 26 cm x 11.4 cm x 30.5 cm.",
+            "stretcher; semi-circle: 33 1/4 x 66 1/4 in.; 84.455 x 168.275 cm",
+            "sheet & image: 15 9/16 x 18 5/8 in.; 39.5288 x 47.3075 cm",
+            "height, without base: 21 in.; 53.34 cm",
         ],
         print_results=False,
         full_dump=False,
@@ -150,7 +153,7 @@ if is_notebook:
     mimsy_string.create_diagram("parser.html", show_results_names=True)
 
     ex = mimsy_string.parse_string(
-            "canvas (semi-circular): 31 1/8 x 59 1/8 in.; 79.0575 x 150.1775 cm",
+        "height, without base: 21 in.; 53.34 cm",
     )
     print(ex)
     print(ex.as_dict())
@@ -193,12 +196,45 @@ if is_notebook:
     print("Success!" if ok else res)
 
 # %%
-for batch in measurements():
+#last = 0
+for batch in measurements(last - 1):
     for m in batch.to_dicts():
         try:
+            if m["M_ID"] in [
+                # misfits
+                120306,
+                122060,
+                155447,
+                155633,
+                160985,
+                161040,
+                161062,
+                161090,
+                161103,
+                161116,
+                161118,
+                162120,
+                162558,
+                163006,
+                163008,
+                163012,
+                163033,
+                163944,
+                166223,
+                168210,
+                1000329,
+                1001241,
+                2001327,
+                2001730,
+                2002360,
+                2002496,
+                2002650,
+            ]:
+                continue
             mimsy_string.parse_string(m["MEASUREMENTS"])
         except:
             print(m)
+            last = m["M_ID"]
             raise
 
 # %%
