@@ -17,6 +17,28 @@
 
 # %%
 from dotenv import load_dotenv
+
 load_dotenv()
+
+# %%
+import os
+
+import oracledb
+
+mimsy = oracledb.connect(
+    dsn=f"{os.environ["MIMSY_HOST"]}:{os.environ["MIMSY_PORT"]}/{os.environ["MIMSY_SERVICE"]}",
+    user=os.environ["MIMSY_USERNAME"],
+    password=os.environ["MIMSY_PASSWORD"],
+    tcp_connect_timeout=5.0,
+)
+mimsy.is_healthy()
+
+# %%
+import polars as pl
+
+pl.read_database(
+    connection=mimsy,
+    query=f"SELECT M_ID, MEASUREMENTS FROM CATALOGUE WHERE MEASUREMENTS IS NOT NULL FETCH NEXT 10 ROWS ONLY",
+)
 
 # %%
