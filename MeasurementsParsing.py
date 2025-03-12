@@ -76,22 +76,14 @@ if is_notebook:
 # %%
 import pyparsing as pp
 
-dim = pp.Group(
-    (
-        pp.Group(
-            pp.Word(pp.nums)("whole")
-            + pp.Combine(
-                pp.Optional("." + pp.Word(pp.nums))
-                + pp.Optional(pp.Word(pp.nums) + "/" + pp.Word(pp.nums))
-            )("fraction")
-        )("value")
-    )
-    + pp.Optional(pp.oneOf(["in", "cm"])("unit"))
-)
+dim =  pp.Group(
+        pp.Word(pp.nums + "." + "/" + " ").set_parse_action(pp.token_map(str.strip))("value")
+    + pp.Optional(pp.oneOf(["in", "cm"])("unit")))
 
 if is_notebook:
     (ok, res) = dim.run_tests(
         [
+            "15/16 in", 
             "5 3/4 in",
             "12 in",
             "14.6 cm",
@@ -116,7 +108,7 @@ vol = pp.Group(
 
 dimensions = pp.Group(
     pp.Group(
-        pp.Word(pp.alphas) + pp.Optional(pp.Combine("(" + pp.Word(pp.alphas) + ")"))
+        pp.Word(pp.alphanums) + pp.Optional(pp.Combine("(" + pp.Word(pp.alphas) + ")"))
     )("type")
     + ":"
     + pp.OneOrMore(vol("measurements*") + pp.Suppress(pp.Optional(";")))
@@ -127,6 +119,8 @@ if is_notebook:
         [
             "Overall: 5 3/4 in x 12 1/4 in x 9 1/8 in; 14.6 cm x 31.1 cm x 23.2 cm",
             "Overall (a): 4 in x 2 7/8 in; 10.2 cm x 7.3 cm",
+            "5Sheet: 17 3/8 in x 13 in; 44.1 cm x 33 cm",
+            "Overall: 15/16 in x 3 1/16 in x 2 in; 2.4 cm x 7.8 cm x 5.1 cm",
         ],
         print_results=False,
         full_dump=False,
@@ -137,15 +131,6 @@ mimsy_string = pp.OneOrMore(dimensions("dimensions*"))
 
 if is_notebook:
     mimsy_string.create_diagram("parser.html", show_results_names=True)
-    
-    (ok, res) = mimsy_string.run_tests(
-        [
-            "Frame: 31 7/8 x 49 1/2 x 3 in; 81 x 125.7 x 7.6 cm; Stretcher: 24 1/4 x 42 1/4 in; 61.6 x 107.3 cm",
-        ],
-        print_results=False,
-        full_dump=False,
-    )
-    print("Success!" if ok else res)
     
     (ok, res) = mimsy_string.run_tests(
         """
@@ -192,5 +177,3 @@ for batch in measurements:
         except:
             print(m)
             raise
-
-# %%
