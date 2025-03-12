@@ -1,3 +1,4 @@
+.env
 *.ipynb
 
 # Byte-compiled / optimized / DLL files
