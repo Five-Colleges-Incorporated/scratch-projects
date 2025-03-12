@@ -21,6 +21,16 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # %%
+is_notebook = False
+try:
+    get_ipython()
+    is_notebook = True
+    from rich import print
+except:
+    pass
+print("In a notebook: ", is_notebook)
+
+# %%
 import os
 
 import oracledb
