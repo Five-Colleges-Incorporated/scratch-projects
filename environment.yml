@@ -9,6 +9,7 @@ dependencies:
   - pyparsing>=3.2,<4
   - python-dotenv>=1.0.1,<2
   - jupytext==1.16.7
+  - rich>=13.9.4,<14
   - pip
   - pip:
     - oracledb==3.0.0
