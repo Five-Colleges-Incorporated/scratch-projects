@@ -13,6 +13,10 @@
 # ---
 
 # %%
-# %conda env update --file environment.yml
+# %conda env update -n base --file environment.yml
+
+# %%
+from dotenv import load_dotenv
+load_dotenv()
 
 # %%
