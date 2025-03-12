@@ -44,14 +44,22 @@ mimsy = oracledb.connect(
 mimsy.is_healthy()
 
 # %%
+# query = "SELECT M_ID, MEASUREMENTS FROM CATALOGUE WHERE MEASUREMENTS IS NOT NULL FETCH NEXT 10 ROWS ONLY"
+query = "SELECT M_ID, MEASUREMENTS FROM CATALOGUE WHERE MEASUREMENTS IS NOT NULL"
+
+# %%
 import polars as pl
 
 measurements = pl.read_database(
     connection=mimsy,
-    query=f"SELECT M_ID, MEASUREMENTS FROM CATALOGUE WHERE MEASUREMENTS IS NOT NULL FETCH NEXT 10 ROWS ONLY",
+    query=query,
+    iter_batches=True,
+    batch_size=500
 )
+
+# %%
 if is_notebook:
-    ms = measurements.to_dicts()
+    ms = pl.concat(list(measurements)).to_dicts()
     tests = """
     (ok, res) = mimsy_string.run_tests('''"""
     for m in ms:
@@ -78,7 +86,7 @@ dim = pp.Group(
             )("fraction")
         )("value")
     )
-    + (pp.oneOf(["in", "cm"])("unit"))
+    + pp.Optional(pp.oneOf(["in", "cm"])("unit"))
 )
 
 if is_notebook:
@@ -88,6 +96,10 @@ if is_notebook:
             "12 in",
             "14.6 cm",
             "11 cm",
+            "3",
+            "31 7/8",
+            "125.7",
+            "81",
         ],
         print_results=False,
         full_dump=False,
@@ -125,7 +137,16 @@ mimsy_string = pp.OneOrMore(dimensions("dimensions*"))
 
 if is_notebook:
     mimsy_string.create_diagram("parser.html", show_results_names=True)
-
+    
+    (ok, res) = mimsy_string.run_tests(
+        [
+            "Frame: 31 7/8 x 49 1/2 x 3 in; 81 x 125.7 x 7.6 cm; Stretcher: 24 1/4 x 42 1/4 in; 61.6 x 107.3 cm",
+        ],
+        print_results=False,
+        full_dump=False,
+    )
+    print("Success!" if ok else res)
+    
     (ok, res) = mimsy_string.run_tests(
         """
 
@@ -162,5 +183,14 @@ if is_notebook:
         full_dump=False,
     )
     print("Success!" if ok else res)
+
+# %%
+for batch in measurements:
+    for m in batch.to_dicts():
+        try:
+            mimsy_string.parse_string(m["MEASUREMENTS"])
+        except:
+            print(m)
+            raise
 
 # %%
