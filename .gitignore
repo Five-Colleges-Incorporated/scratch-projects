@@ -1,4 +1,6 @@
+output/
 *.csv
+*.parquet
 .env
 *.ipynb
 

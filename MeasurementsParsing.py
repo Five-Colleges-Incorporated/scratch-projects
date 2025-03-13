@@ -384,14 +384,17 @@ if is_notebook:
         print_results=False,
         full_dump=False,
     )
-    # print("Success!" if ok else res)
+    print("Success!" if ok else res)
 
 # %%
 from copy import deepcopy
+from datetime import datetime
+from pathlib import Path
 
 last = 0
-batch_no = 0
-for batch in measurements(last):
+output = Path("output", datetime.now().strftime("%m%d%H%M%S"))
+output.mkdir(parents=True, exist_ok=False)
+for batch_no, batch in enumerate(measurements(last-1)):
 
     results = []
     for item in batch.to_dicts():
@@ -407,6 +410,8 @@ for batch in measurements(last):
             dimensions = mimsy_string.parse_string(item["MEASUREMENTS"])
         except pp.ParseException:
             results.append(base_res)
+        except:
+            last = item["M_ID"]
             
         for f in dimensions["facets"]:
             f_res = deepcopy(base_res)
@@ -450,9 +455,12 @@ for batch in measurements(last):
             ("Dimension4", pl.String),
             ("Dimension5", pl.String),
         ],
-    ).write_csv(f"{batch_no}.csv")
-    batch_no += 1
+    ).write_csv(output / f"{batch_no:03d}.csv")
+    #).write_parquet(output / f"{batch_no:03d}.parquet")
 
 # %%
+if is_notebook:
+    all_rows = pl.scan_parquet(output)
+    all_rows.collect()
 
 # %%
