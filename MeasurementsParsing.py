@@ -168,7 +168,7 @@ dim = pp.Group(
         )("unit")
         + pp.Optional(".")
         + pp.Optional(
-            pp.Word(pp.alphas + " ", min=3).set_parse_action(
+            pp.Word(pp.alphas + "(" + ")" + " ", min=3).set_parse_action(
                 pp.token_map(extra_x_strip)
             )("context")
         )
@@ -202,6 +202,7 @@ if is_notebook:
             "10 deg.",
             "5 minutes",
             "09 seconds",
+            "39 in (at highest point)",
         ],
         print_results=False,
         full_dump=False,
@@ -220,7 +221,7 @@ vol = pp.Group(
 dimensions = pp.Group(
     pp.Optional(
         pp.Group(
-            pp.Word(pp.alphanums + "/" + "-" + "&" + "?" + "'" + " ").set_parse_action(
+            pp.Word(pp.alphas + "/" + "-" + "&" + "?" + "'" + " ").set_parse_action(
                 pp.token_map(str.strip)
             )
             + pp.Optional(pp.Suppress(";") + pp.Word(pp.alphas + "-"))
@@ -233,16 +234,15 @@ dimensions = pp.Group(
             + pp.Optional(
                 pp.Combine(
                     "("
-                    + pp.Word(pp.alphas + "-" + " ").set_parse_action(
+                    + pp.Word(pp.alphas + "-" + "." + " ").set_parse_action(
                         pp.token_map(str.strip)
                     )
                     + ")"
                 )
             )
         )("type")
-        + pp.Suppress(":")
     )
-    + pp.Optional(pp.Suppress(":"))
+    + pp.Suppress(pp.ZeroOrMore(":"))
     + pp.OneOrMore(vol("measurements*") + pp.Suppress(pp.Optional(";")))
 )
 
@@ -251,7 +251,7 @@ if is_notebook:
         [
             "Overall: 5 3/4 in x 12 1/4 in x 9 1/8 in; 14.6 cm x 31.1 cm x 23.2 cm",
             "Overall (a): 4 in x 2 7/8 in; 10.2 cm x 7.3 cm",
-            "5Sheet: 17 3/8 in x 13 in; 44.1 cm x 33 cm",
+            #"5Sheet: 17 3/8 in x 13 in; 44.1 cm x 33 cm",
             "Overall: 15/16 in x 3 1/16 in x 2 in; 2.4 cm x 7.8 cm x 5.1 cm",
             "24 x 24 in; 60.96 x 60.96 cm",
             ": 1 1/4 x 2 3/4 x 1 1/2 in.",
@@ -270,6 +270,8 @@ if is_notebook:
             "image: 11 in x 14 in ; 27.9 cm x 35.6 cm x",
             "object: 17 1/2 in. diameter x 3/8 in. depth"
             "29 in. high x 15 in. wide x 3 in. sconce thickness",
+            "marble 2.5 x 54 x 28 in.",
+            "top cup 5 in.",
         ],
         print_results=False,
         full_dump=False,
@@ -281,7 +283,9 @@ mimsy_string = pp.OneOrMore(dimensions("facets*"))
 if is_notebook:
     mimsy_string.create_diagram("parser.html", show_results_names=True)
 
-    ex = mimsy_string.parse_string("29 in. high x 15 in. wide x 3 in. sconce thickness")
+    ex = mimsy_string.parse_string(
+        "loin cloth: 15 1/4 x 10 3/4 in.; 38.7 x 27.3 cm; band: 1 3/8 x 10 7/8 in.; 3.5 x 27.6 cm; ties (approx.): 1 3/4 x 7 in.; 4.5 x 17.8 cm"
+    )
     print(ex)
     print(ex.as_dict())
 
@@ -488,10 +492,10 @@ for batch_no, batch in enumerate(measurements(last - 1)):
                 m_res = deepcopy(f_res)
                 units = set()
                 for i, d in enumerate(m["dimensions"]):
-                    if "value" in d:
-                        m_res[f"Dimension{i+1} Value"] = d["value"]
                     if "context" in d:
                         m_res[f"Dimension{i+1} Context"] = d["context"]
+                    if "value" in d:
+                        m_res[f"Dimension{i+1} Value"] = d["value"]
                     if "unit" in d:
                         units.add(d["unit"])
 
@@ -534,12 +538,12 @@ if is_notebook:
     all_rows.filter(pl.col("Parse Error").is_not_null()).sink_csv(
         output / "parse_errors.csv"
     )
-    all_rows.filter(pl.col("Inconsistent Units") | pl.col("Too Many Dimensions")).sink_csv(
-        output / "parse_anomalies.csv"
-    )
+    all_rows.filter(
+        pl.col("Inconsistent Units") | pl.col("Too Many Dimensions")
+    ).sink_csv(output / "parse_anomalies.csv")
     all_rows.filter(pl.col("Parse Error").is_null()).sink_csv(
         output / "parse_results.csv"
     )
-    
+
 
 # %%
