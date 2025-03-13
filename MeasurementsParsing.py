@@ -136,6 +136,14 @@ if is_notebook:
 # %%
 import pyparsing as pp
 
+
+def extra_x_strip(t):
+    t = str.strip(t)
+    if t.endswith(" x"):
+        t = t[:-2]
+    return str.strip(t)
+
+
 dim = pp.Group(
     pp.Word(pp.nums + "." + "/" + " ").set_parse_action(pp.token_map(str.strip))(
         "value"
@@ -159,6 +167,11 @@ dim = pp.Group(
             ]
         )("unit")
         + pp.Optional(".")
+        + pp.Optional(
+            pp.Word(pp.alphas + " ", min=3).set_parse_action(
+                pp.token_map(extra_x_strip)
+            )("context")
+        )
     )
 )
 
@@ -170,7 +183,9 @@ if is_notebook:
             "5 3/4 in",
             "31 inches",
             "12 in",
+            "3 in. sconce thickness",
             '26 3/4"',
+            '12" diameter',
             "14.6 cm",
             "11 cm",
             "3",
@@ -253,6 +268,8 @@ if is_notebook:
             "overall, w/handle: 5 3/4 x 4 1/2 x 9 1/8 in.; 14.605 x 11.43 x 23.1775 cm",
             "artist's board: 7 5/8 x 11 7/16 in.; 19.3675 x 29.0513 cm",
             "image: 11 in x 14 in ; 27.9 cm x 35.6 cm x",
+            "object: 17 1/2 in. diameter x 3/8 in. depth"
+            "29 in. high x 15 in. wide x 3 in. sconce thickness",
         ],
         print_results=False,
         full_dump=False,
@@ -264,7 +281,7 @@ mimsy_string = pp.OneOrMore(dimensions("facets*"))
 if is_notebook:
     mimsy_string.create_diagram("parser.html", show_results_names=True)
 
-    ex = mimsy_string.parse_string("17mm; 3.293g")
+    ex = mimsy_string.parse_string("29 in. high x 15 in. wide x 3 in. sconce thickness")
     print(ex)
     print(ex.as_dict())
 
@@ -472,7 +489,9 @@ for batch_no, batch in enumerate(measurements(last - 1)):
                 units = set()
                 for i, d in enumerate(m["dimensions"]):
                     if "value" in d:
-                        m_res[f"Dimension{i+1}"] = d["value"]
+                        m_res[f"Dimension{i+1} Value"] = d["value"]
+                    if "context" in d:
+                        m_res[f"Dimension{i+1} Context"] = d["context"]
                     if "unit" in d:
                         units.add(d["unit"])
 
@@ -492,11 +511,16 @@ for batch_no, batch in enumerate(measurements(last - 1)):
             ("Type", pl.String),
             ("Type (additional)", pl.String),
             ("Units", pl.String),
-            ("Dimension1", pl.String),
-            ("Dimension2", pl.String),
-            ("Dimension3", pl.String),
-            ("Dimension4", pl.String),
-            ("Dimension5", pl.String),
+            ("Dimension1 Context", pl.String),
+            ("Dimension1 Value", pl.String),
+            ("Dimension2 Context", pl.String),
+            ("Dimension2 Value", pl.String),
+            ("Dimension3 Context", pl.String),
+            ("Dimension3 Value", pl.String),
+            ("Dimension4 Context", pl.String),
+            ("Dimension4 Value", pl.String),
+            ("Dimension5 Context", pl.String),
+            ("Dimension5 Value", pl.String),
         ],
         # ).write_csv(output / f"{batch_no:03d}.csv")
     ).write_parquet(output / f"{batch_no:03d}.parquet")
