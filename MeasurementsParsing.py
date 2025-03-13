@@ -45,7 +45,8 @@ mimsy.is_healthy()
 
 # %%
 # query = "SELECT M_ID, MEASUREMENTS FROM CATALOGUE WHERE MEASUREMENTS IS NOT NULL FETCH NEXT 10 ROWS ONLY"
-# query = "SELECT M_ID, MEASUREMENTS FROM CATALOGUE WHERE M_ID > {0} AND MEASUREMENTS IS NOT NULL ORDER BY M_ID ASC"
+query = "SELECT M_ID, MEASUREMENTS FROM CATALOGUE WHERE M_ID > {0} AND MEASUREMENTS IS NOT NULL ORDER BY M_ID ASC FETCH NEXT 10000 ROWS ONLY"
+'''
 query = """
 SELECT
     M_ID
@@ -104,6 +105,7 @@ WHERE M_ID IN (
 5052353
 ) AND {0} = {0}
 ORDER BY M_ID ASC"""
+'''
 
 # %%
 import polars as pl
@@ -138,7 +140,7 @@ dim = pp.Group(
     pp.Word(pp.nums + "." + "/" + " ").set_parse_action(pp.token_map(str.strip))(
         "value"
     )
-    + pp.Optional(pp.oneOf(["in", "ft", "cm", "m", "mm", "g", "gm", "deg", "minutes", "seconds"])("unit") + pp.Optional("."))
+    + pp.Optional(pp.oneOf(["in", '"', "inches", "ft", "'", "cm", "m", "mm", "g", "gm", "deg", "minutes", "seconds"])("unit") + pp.Optional("."))
 )
 
 if is_notebook:
@@ -147,7 +149,9 @@ if is_notebook:
         [
             "15/16 in",
             "5 3/4 in",
+            "31 inches",
             "12 in",
+            '26 3/4"',
             "14.6 cm",
             "11 cm",
             "3",
@@ -155,6 +159,7 @@ if is_notebook:
             "125.7",
             "81",
             "17 ft",
+            "26 3/4'",
             "5.2 m",
             "47 13/16 in.",
             "17mm",
@@ -169,7 +174,7 @@ if is_notebook:
     )
     print("Success!" if ok and not debug else res)
 
-vol = pp.Group(pp.OneOrMore(pp.Optional(pp.Suppress("x")) + dim("dimensions*")))
+vol = pp.Group(pp.OneOrMore(pp.Optional(pp.Suppress("x")) + dim("dimensions*") + pp.Optional(pp.Suppress("x"))))
 
 
 dimensions = pp.Group(
@@ -222,6 +227,7 @@ if is_notebook:
             "sheet?: 14 x 20 1/8 in.; 35.56 x 51.1175 cm",
             "overall, w/handle: 5 3/4 x 4 1/2 x 9 1/8 in.; 14.605 x 11.43 x 23.1775 cm",
             "artist's board: 7 5/8 x 11 7/16 in.; 19.3675 x 29.0513 cm",
+            "image: 11 in x 14 in ; 27.9 cm x 35.6 cm x"
         ],
         print_results=False,
         full_dump=False,
@@ -405,6 +411,8 @@ last = 0
 output = Path("output", datetime.now().strftime("%m%d%H%M%S"))
 output.mkdir(parents=True, exist_ok=False)
 for batch_no, batch in enumerate(measurements(last-1)):
+    if is_notebook:
+        print(f'{batch_no}...')
 
     results = []
     for item in batch.to_dicts():
@@ -465,12 +473,15 @@ for batch_no, batch in enumerate(measurements(last-1)):
             ("Dimension4", pl.String),
             ("Dimension5", pl.String),
         ],
-    ).write_csv(output / f"{batch_no:03d}.csv")
-    #).write_parquet(output / f"{batch_no:03d}.parquet")
+    #).write_csv(output / f"{batch_no:03d}.csv")
+    ).write_parquet(output / f"{batch_no:03d}.parquet")
+
+if is_notebook:
+    print(f'{output} done!')
 
 # %%
 if is_notebook:
     all_rows = pl.scan_parquet(output)
-    all_rows.collect()
+    all_rows.filter(pl.col("Parse Error").is_not_null()).sink_csv(output / "parse_errors.csv")
 
 # %%

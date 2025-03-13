@@ -5,7 +5,7 @@ channels:
   - nodefaults
 dependencies:
   - python>=3.12,<3.13
-  - polars>=1.24,<2
+  - polars==1.22.0
   - pyparsing>=3.2,<4
   - python-dotenv>=1.0.1,<2
   - jupytext==1.16.7
