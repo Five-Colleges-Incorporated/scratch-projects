@@ -530,9 +530,16 @@ if is_notebook:
 
 # %%
 if is_notebook:
-    all_rows = pl.scan_parquet(output)
+    all_rows = pl.scan_parquet(output / "*.parquet")
     all_rows.filter(pl.col("Parse Error").is_not_null()).sink_csv(
         output / "parse_errors.csv"
     )
+    all_rows.filter(pl.col("Inconsistent Units") | pl.col("Too Many Dimensions")).sink_csv(
+        output / "parse_anomalies.csv"
+    )
+    all_rows.filter(pl.col("Parse Error").is_null()).sink_csv(
+        output / "parse_results.csv"
+    )
+    
 
 # %%
