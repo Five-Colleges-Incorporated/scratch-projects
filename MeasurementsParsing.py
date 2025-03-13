@@ -229,7 +229,7 @@ if is_notebook:
     mimsy_string.create_diagram("parser.html", show_results_names=True)
 
     ex = mimsy_string.parse_string(
-        "Overall (a): 4 in x 2 7/8 in; 10.2 cm x 7.3 cm; Overall (b): 3 5/8 in x 4 1/8 in; 9.2 cm x 10.5 cm"
+        "17mm; 3.293g"
     )
     print(ex)
     print(ex.as_dict())
@@ -390,25 +390,63 @@ if is_notebook:
         print_results=False,
         full_dump=False,
     )
-    print("Success!" if ok else res)
+    #print("Success!" if ok else res)
 
 # %%
+from copy import deepcopy
+
 last = 0
+batch_no = 0
 for batch in measurements(last):
+    
+    results = []
     for m in batch.to_dicts():
         try:
-            mid = m["M_ID"]
-            measurements = m["MEASUREMENTS"]
+            base_res = {"M_ID": m["M_ID"], "MEASUREMENTS": m["MEASUREMENTS"]}
 
-            dimensions = mimsy_string.parse_string(measurements)
-        except:
-            if ":" not in measurements or measurements in [
-                "overall: in.; cm"
-            ]:
-                continue
+            dimensions = mimsy_string.parse_string(m["MEASUREMENTS"])
+            for d in dimensions["dimensions"]:
+                d_res = deepcopy(base_res)
+                if "type" in d:
+                    types = d["type"]
+                    if len(types) > 0:
+                        d_res["Type"] = types[0]
+                    if len(types) > 1:
+                        d_res["Type (additional)"] = ', '.join(d["type"][1:])
+                        
+                for ms in [m.as_dict()["width"] for m in d["measurements"]]:
+                    m_res = deepcopy(d_res)
+                    if "value" in ms:
+                        d_res["Dimension1"] = ms["value"]
+                    if "unit" in ms:
+                        d_res["Units"] = ms["unit"]
 
-            last = mid
-            print(m)
-            raise
+                    results.append(d_res)
+        except Exception as e:
+            base_res["Parse Error"] = str(e)
+            results.append(base_res)
+            last = m["M_ID"]
+            continue
+
+    pl.DataFrame(
+        results,
+        schema=[
+            ("M_ID", pl.Int64),
+            ("MEASUREMENTS", pl.String),
+            ("Parse Error", pl.String),
+            ("Inconsistent Units", pl.Boolean),
+            ("Type", pl.String),
+            ("Type (additional)", pl.String),
+            ("Dimension1", pl.String),
+            ("Dimension2", pl.String),
+            ("Dimension3", pl.String),
+            ("Dimension4", pl.String),
+            ("Dimension5", pl.String),
+            ("Units", pl.String),
+        ],
+    ).write_csv(f"{batch_no}.csv")
+    batch_no += 1
+
+# %%
 
 # %%
