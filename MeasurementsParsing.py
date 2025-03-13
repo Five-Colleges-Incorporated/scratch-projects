@@ -138,10 +138,11 @@ dim = pp.Group(
     pp.Word(pp.nums + "." + "/" + " ").set_parse_action(pp.token_map(str.strip))(
         "value"
     )
-    + pp.Optional(pp.oneOf(["in", "ft", "cm", "m"])("unit") + pp.Optional("."))
+    + pp.Optional(pp.oneOf(["in", "ft", "cm", "m", "mm", "g", "gm", "deg", "minutes", "seconds"])("unit") + pp.Optional("."))
 )
 
 if is_notebook:
+    debug = True
     (ok, res) = dim.run_tests(
         [
             "15/16 in",
@@ -156,11 +157,17 @@ if is_notebook:
             "17 ft",
             "5.2 m",
             "47 13/16 in.",
+            "17mm",
+            "3.293g",
+            "3.0 gm.",
+            "10 deg.",
+            "5 minutes",
+            "09 seconds",
         ],
         print_results=False,
         full_dump=False,
     )
-    print("Success!" if ok else res)
+    print("Success!" if ok and not debug else res)
 
 vol = pp.Group(pp.OneOrMore(pp.Optional(pp.Suppress("x")) + dim("dimensions*")))
 
@@ -190,6 +197,7 @@ dimensions = pp.Group(
         )("type")
         + pp.Suppress(":")
     )
+    + pp.Optional(pp.Suppress(":"))
     + pp.OneOrMore(vol("measurements*") + pp.Suppress(pp.Optional(";")))
 )
 
@@ -201,6 +209,7 @@ if is_notebook:
             "5Sheet: 17 3/8 in x 13 in; 44.1 cm x 33 cm",
             "Overall: 15/16 in x 3 1/16 in x 2 in; 2.4 cm x 7.8 cm x 5.1 cm",
             "24 x 24 in; 60.96 x 60.96 cm",
+            ": 1 1/4 x 2 3/4 x 1 1/2 in.",
             "Sheet/Image: 5 x 7 1/4 in; 12.7 x 18.4 cm",
             "Overall: 9 in; 22.9 cm",
             "canvas (semi-circular): 31 1/8 x 59 1/8 in.; 79.0575 x 150.1775 cm",
@@ -217,7 +226,7 @@ if is_notebook:
         print_results=False,
         full_dump=False,
     )
-    print("Success!" if ok else res)
+    print("Success!" if ok and not debug else res)
 
 mimsy_string = pp.OneOrMore(dimensions("facets*"))
 
@@ -384,7 +393,8 @@ if is_notebook:
         print_results=False,
         full_dump=False,
     )
-    print("Success!" if ok else res)
+    if not debug:
+        print("Success!" if ok else res)
 
 # %%
 from copy import deepcopy
@@ -420,7 +430,7 @@ for batch_no, batch in enumerate(measurements(last-1)):
                 if len(types) > 0:
                     f_res["Type"] = types[0]
                 if len(types) > 1:
-                    f_res["Type (additional)"] = ", ".join(f["type"][1:])
+                    f_res["Type (additional)"] = " ".join(f["type"][1:])
 
             f_res["Too Many Dimensions"] = len(f["measurements"]) > 5
                 
