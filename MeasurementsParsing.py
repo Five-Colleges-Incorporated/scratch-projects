@@ -45,7 +45,7 @@ mimsy.is_healthy()
 
 # %%
 # query = "SELECT M_ID, MEASUREMENTS FROM CATALOGUE WHERE MEASUREMENTS IS NOT NULL FETCH NEXT 10 ROWS ONLY"
-query = "SELECT M_ID, MEASUREMENTS FROM CATALOGUE WHERE M_ID > {0} AND MEASUREMENTS IS NOT NULL ORDER BY M_ID ASC FETCH NEXT 10000 ROWS ONLY"
+query = "SELECT M_ID, MEASUREMENTS FROM CATALOGUE WHERE M_ID > {0} AND MEASUREMENTS IS NOT NULL ORDER BY M_ID ASC"
 '''
 query = """
 SELECT
@@ -113,7 +113,7 @@ import polars as pl
 
 def measurements(last=0):
     return pl.read_database(
-        connection=mimsy, query=query.format(last), iter_batches=True, batch_size=500
+        connection=mimsy, query=query.format(last), iter_batches=True, batch_size=1000
     )
 
 
@@ -168,10 +168,21 @@ dim = pp.Group(
         )("unit")
         + pp.Optional(".")
         + pp.Optional(
-            pp.Word(pp.alphas + "(" + ")" + " ", min=3).set_parse_action(
-                pp.token_map(extra_x_strip)
-            )("context")
-        )
+            pp.Optional(
+                pp.Combine(
+                    "("
+                    + pp.Word(pp.alphas + "." + " ").set_parse_action(
+                        pp.token_map(str.strip)
+                    )
+                    + ")"
+                )
+            )
+            + pp.Optional(
+                pp.Word(pp.alphas + " ", min=3).set_parse_action(
+                    pp.token_map(extra_x_strip)
+                )
+            )
+        )("context")
     )
 )
 
@@ -203,6 +214,7 @@ if is_notebook:
             "5 minutes",
             "09 seconds",
             "39 in (at highest point)",
+            "3 3/4 in (diam. top)",
         ],
         print_results=False,
         full_dump=False,
@@ -221,22 +233,22 @@ vol = pp.Group(
 dimensions = pp.Group(
     pp.Optional(
         pp.Group(
-            pp.Word(pp.alphas + "/" + "-" + "&" + "?" + "'" + " ").set_parse_action(
-                pp.token_map(str.strip)
-            )
-            + pp.Optional(pp.Suppress(";") + pp.Word(pp.alphas + "-"))
+            pp.Word(
+                pp.alphas + pp.alphas8bit + "/" + "-" + "&" + "?" + "'" + " "
+            ).set_parse_action(pp.token_map(str.strip))
+            + pp.Optional(pp.Suppress(";") + pp.Word(pp.alphas + pp.alphas8bit + "-"))
             + pp.Optional(
                 pp.Suppress(",")
-                + pp.Word(pp.alphas + "/" + " ").set_parse_action(
+                + pp.Word(pp.alphas + pp.alphas8bit + "/" + "," + " ").set_parse_action(
                     pp.token_map(str.strip)
                 )
             )
             + pp.Optional(
                 pp.Combine(
                     "("
-                    + pp.Word(pp.alphas + "-" + "." + " ").set_parse_action(
-                        pp.token_map(str.strip)
-                    )
+                    + pp.Word(
+                        pp.alphanums + pp.alphas8bit + "-" + "." + ";" + "&" + " "
+                    ).set_parse_action(pp.token_map(str.strip))
                     + ")"
                 )
             )
@@ -251,7 +263,7 @@ if is_notebook:
         [
             "Overall: 5 3/4 in x 12 1/4 in x 9 1/8 in; 14.6 cm x 31.1 cm x 23.2 cm",
             "Overall (a): 4 in x 2 7/8 in; 10.2 cm x 7.3 cm",
-            #"5Sheet: 17 3/8 in x 13 in; 44.1 cm x 33 cm",
+            # "5Sheet: 17 3/8 in x 13 in; 44.1 cm x 33 cm",
             "Overall: 15/16 in x 3 1/16 in x 2 in; 2.4 cm x 7.8 cm x 5.1 cm",
             "24 x 24 in; 60.96 x 60.96 cm",
             ": 1 1/4 x 2 3/4 x 1 1/2 in.",
@@ -272,6 +284,13 @@ if is_notebook:
             "29 in. high x 15 in. wide x 3 in. sconce thickness",
             "marble 2.5 x 54 x 28 in.",
             "top cup 5 in.",
+            "image (height & width of fan): 10 x 19 1/2 in.; 25.4 x 49.53 cm",
+            "image (height & width of fan): 10 x 19 1/2 in.; 25.4 x 49.53 cm",
+            "image(with handwritten text not in English; irregular): 9 x 15 1/8 in.; 22.86 x 38.4175 cm",
+            "chine collé: 6 3/4 in. x 6 1/2 in.; 17.145 cm x 16.51 cm",
+            # "plate; 10 3/8 in. x 12 3/8 in.; 26.3525 cm x 31.4325 cm",
+            "overall (1): 1/2 x 10 1/4 in; 1.3 x 26 cm",
+            "Overall, closed, without leaves: 28.5 x 56 x 24.375 in; 72.4 x 142.2 x 61.9 cm",
         ],
         print_results=False,
         full_dump=False,
@@ -284,7 +303,7 @@ if is_notebook:
     mimsy_string.create_diagram("parser.html", show_results_names=True)
 
     ex = mimsy_string.parse_string(
-        "loin cloth: 15 1/4 x 10 3/4 in.; 38.7 x 27.3 cm; band: 1 3/8 x 10 7/8 in.; 3.5 x 27.6 cm; ties (approx.): 1 3/4 x 7 in.; 4.5 x 17.8 cm"
+        "image: 6 1/16 in. x 6 in.; 15.39875 cm x 15.24 cm; chine collé: 6 3/4 in. x 6 1/2 in.; 17.145 cm x 16.51 cm; sheet: 15 3/4 in x 13 1/8 in; 40.005 cm x 33.3375 cm"
     )
     print(ex)
     print(ex.as_dict())
@@ -447,6 +466,8 @@ if is_notebook:
     )
     if not debug:
         print("Success!" if ok else res)
+
+# %%
 
 # %%
 from copy import deepcopy
