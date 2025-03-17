@@ -145,9 +145,9 @@ def extra_x_strip(t):
 
 
 dim = pp.Group(
-    pp.Word(pp.nums + "." + "/" + " ").set_parse_action(pp.token_map(str.strip))(
-        "value"
-    )
+    pp.Word(
+        pp.nums + "." + "/" + " " + "½" + "¼" + "¾" + "⅛" + "⅜" + "⅝" + "⅞"
+    ).set_parse_action(pp.token_map(str.strip))("value")
     + pp.Optional(
         pp.oneOf(
             [
@@ -215,6 +215,7 @@ if is_notebook:
             "09 seconds",
             "39 in (at highest point)",
             "3 3/4 in (diam. top)",
+            "19 ½",
         ],
         print_results=False,
         full_dump=False,
