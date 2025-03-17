@@ -237,8 +237,17 @@ vol = pp.Group(
 dimensions = pp.Group(
     pp.Optional(
         pp.Group(
-            pp.Word(
-                pp.alphas + pp.alphas8bit + "/" + "-" + "&" + "?" + "'" + " "
+            pp.Optional(
+                pp.Combine(
+                    pp.Suppress("(")
+                    + pp.Word(
+                        pp.alphanums + pp.alphas8bit + "/" + "-" + "." + ";" + "&" + " "
+                    ).set_parse_action(pp.token_map(str.strip))
+                    + pp.Suppress(")")
+                )
+            )
+            + pp.Word(
+                pp.alphas + pp.alphas8bit + "/" + "-" + "&" + "?" + "'" + "#" + " "
             ).set_parse_action(pp.token_map(str.strip))
             + pp.Optional(pp.Suppress(";") + pp.Word(pp.alphas + pp.alphas8bit + "-"))
             + pp.Optional(
@@ -251,7 +260,7 @@ dimensions = pp.Group(
                 pp.Combine(
                     pp.Suppress("(")
                     + pp.Word(
-                        pp.alphanums + pp.alphas8bit + "-" + "." + ";" + "&" + " "
+                        pp.alphanums + pp.alphas8bit + "/" + "-" + "." + ";" + "&" + " "
                     ).set_parse_action(pp.token_map(str.strip))
                     + pp.Suppress(")")
                 )
@@ -296,6 +305,7 @@ if is_notebook:
             "overall (1): 1/2 x 10 1/4 in; 1.3 x 26 cm",
             "Overall, closed, without leaves: 28.5 x 56 x 24.375 in; 72.4 x 142.2 x 61.9 cm",
             "Overall: 6 7/8 in (height), 3 5/16 in (bowl diameter), 3 1/4 in (foot diameter)",
+            "(oval) image: 3 1/2 in x 2 1/2 in; 8.89 cm x 6.35 cm",
         ],
         print_results=False,
         full_dump=False,
@@ -379,7 +389,7 @@ if is_notebook:
     hdf_string.create_diagram("historic-deerfield_parser.html", show_results_names=True)
 
     ex = mimsy_string.parse_string(
-        "Overall: 6 7/8 in (height), 3 5/16 in (bowl diameter), 3 1/4 in (foot diameter)",
+        "overall: 9 x 8 1/2 in.; cm"
     )
     print(ex)
     print(ex.as_dict())
