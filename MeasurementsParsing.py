@@ -319,7 +319,7 @@ dieaxis_string = pp.Group(
         )
         + dim("dimensions*")
     )("measurements*")
-)("facets")
+)("facets*")
 
 
 if is_notebook:
@@ -600,7 +600,7 @@ if is_notebook:
     )
     print("Success!" if ok else res)
 
-# %% jupyter={"outputs_hidden": true}
+# %%
 from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
@@ -620,11 +620,13 @@ for batch_no, batch in enumerate(measurements(last - 1)):
             item["MEASUREMENTS"], print_results=False, full_dump=False
         )
 
+        dieaxis_ok = False
         if not mimsy_ok:
             (dieaxis_ok, _) = dieaxis_string.run_tests(
                 item["MEASUREMENTS"], print_results=False, full_dump=False
             )
 
+        hdf_ok = False
         if not mimsy_ok and not dieaxis_ok:
             (hdf_ok, _) = hdf_string.run_tests(
                 item["MEASUREMENTS"], print_results=False, full_dump=False
@@ -655,14 +657,20 @@ for batch_no, batch in enumerate(measurements(last - 1)):
                 if len(types) > 1:
                     f_res["Type (additional)"] = " ".join(f["type"][1:])
 
-            f_res["Too Many Dimensions"] = len(f["measurements"]) > 5
+            if not "measurements" in f:
+                print(item["MEASUREMENTS"])
+                print(dimensions.as_dict())
+                if "Type" in f_res:
+                    results.append(f_res)
+                continue
 
+            f_res["Too Many Dimensions"] = len(f["measurements"]) > 5
             for m in f["measurements"]:
                 m_res = deepcopy(f_res)
                 units = set()
                 for i, d in enumerate(m["dimensions"]):
                     if "context" in d:
-                        m_res[f"Dimension{i+1} Context"] = d["context"]
+                        m_res[f"Dimension{i+1} Context"] = " ".join(d["context"])
                     if "value" in d:
                         m_res[f"Dimension{i+1} Value"] = d["value"]
                     if "unit" in d:
@@ -673,44 +681,49 @@ for batch_no, batch in enumerate(measurements(last - 1)):
                 m_res[f"Units"] = ", ".join(units)
                 results.append(m_res)
 
-    pl.DataFrame(
-        results,
-        schema=[
-            ("M_ID", pl.Int64),
-            ("MEASUREMENTS", pl.String),
-            ("Parse Error", pl.String),
-            ("Inconsistent Units", pl.Boolean),
-            ("Too Many Dimensions", pl.Boolean),
-            ("Type", pl.String),
-            ("Type (additional)", pl.String),
-            ("Units", pl.String),
-            ("Dimension1 Context", pl.String),
-            ("Dimension1 Value", pl.String),
-            ("Dimension2 Context", pl.String),
-            ("Dimension2 Value", pl.String),
-            ("Dimension3 Context", pl.String),
-            ("Dimension3 Value", pl.String),
-            ("Dimension4 Context", pl.String),
-            ("Dimension4 Value", pl.String),
-            ("Dimension5 Context", pl.String),
-            ("Dimension5 Value", pl.String),
-        ],
-        # ).write_csv(output / f"{batch_no:03d}.csv")
-    ).write_parquet(output / f"{batch_no:03d}.parquet")
+        pl.DataFrame(
+            results,
+            schema=[
+                ("M_ID", pl.Int64),
+                ("MEASUREMENTS", pl.String),
+                ("Parse Error", pl.String),
+                ("Inconsistent Units", pl.Boolean),
+                ("Too Many Dimensions", pl.Boolean),
+                ("Type", pl.String),
+                ("Type (additional)", pl.String),
+                ("Units", pl.String),
+                ("Dimension1 Context", pl.String),
+                ("Dimension1 Value", pl.String),
+                ("Dimension2 Context", pl.String),
+                ("Dimension2 Value", pl.String),
+                ("Dimension3 Context", pl.String),
+                ("Dimension3 Value", pl.String),
+                ("Dimension4 Context", pl.String),
+                ("Dimension4 Value", pl.String),
+                ("Dimension5 Context", pl.String),
+                ("Dimension5 Value", pl.String),
+            ],
+            # ).write_csv(output / f"{batch_no:03d}.csv")
+        ).write_parquet(output / f"{batch_no:03d}.parquet")
 
 if is_notebook:
     print(f"{output} done!")
 
-# %% jupyter={"source_hidden": true, "outputs_hidden": true}
+# %%
 if is_notebook:
     all_rows = pl.scan_parquet(output / "*.parquet")
-    all_rows.filter(pl.col("Parse Error").is_not_null()).sink_csv(
-        output / "parse_errors.csv"
-    )
     all_rows.filter(
-        pl.col("Inconsistent Units") | pl.col("Too Many Dimensions")
-    ).sink_csv(output / "parse_anomalies.csv")
-    all_rows.filter(pl.col("Parse Error").is_null()).sink_csv(
+        pl.col("Parse Error").is_not_null()
+        | pl.col("Inconsistent Units")
+        | pl.col("Too Many Dimensions")
+    ).sink_csv(output / "parse_errors.csv")
+    all_rows.filter(
+        pl.col("Parse Error").is_null()
+        & pl.col("Inconsistent Units").not_()
+        & pl.col("Too Many Dimensions").not_()
+    ).drop("Parse Error", "Inconsistent Units", "Too Many Dimensions").sink_csv(
         output / "parse_results.csv"
     )
 
+
+# %%
