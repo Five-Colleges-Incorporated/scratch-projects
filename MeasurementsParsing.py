@@ -137,17 +137,23 @@ if is_notebook:
 import pyparsing as pp
 
 
+# This is bad. I don't quite know how to not parse the xs with the dim.
+# but it works...
 def extra_x_strip(t):
     t = str.strip(t)
     if t.endswith(" x"):
         t = t[:-2]
+    if t.endswith(" ×"):
+        t = t[:-2]
+    if t.endswith("/"):
+        t = t[:-1]
     return str.strip(t)
 
 
 dim = pp.Group(
     pp.Word(
-        pp.nums + "." + "/" + " " + "½" + "¼" + "¾" + "⅛" + "⅜" + "⅝" + "⅞"
-    ).set_parse_action(pp.token_map(str.strip))("value")
+        pp.nums + "." + "/" + " " + "½" + "¼" + "¾" + "⅛" + "⅜" + "⅝" + "⅞" + "-" + "×"
+    ).set_parse_action(pp.token_map(extra_x_strip))("value")
     + pp.Optional(
         pp.oneOf(
             [
@@ -173,7 +179,7 @@ dim = pp.Group(
             pp.Optional(
                 pp.Combine(
                     pp.Suppress("(")
-                    + pp.Word(pp.alphas + "." + " ").set_parse_action(
+                    + pp.Word(pp.alphas + "." + " " + "[" + "]" + ",").set_parse_action(
                         pp.token_map(str.strip)
                     )
                     + pp.Suppress(")")
@@ -220,18 +226,20 @@ if is_notebook:
             "19 ½",
             "50 lbs",
             "80 pages",
+            '11-1/4"',
         ],
         print_results=False,
         full_dump=False,
     )
+    debug = False
     print("Success!" if ok and not debug else res)
 
 vol = pp.Group(
     pp.OneOrMore(
-        pp.Optional(pp.Suppress("x"))
+        pp.Optional(pp.Suppress(pp.Word("x", "×")))
         + pp.Optional(pp.Suppress(","))
         + dim("dimensions*")
-        + pp.Optional(pp.Suppress("x"))
+        + pp.Optional(pp.Suppress(pp.Word("x", "×")))
     )
 )
 
@@ -308,10 +316,12 @@ if is_notebook:
             "Overall, closed, without leaves: 28.5 x 56 x 24.375 in; 72.4 x 142.2 x 61.9 cm",
             "Overall: 6 7/8 in (height), 3 5/16 in (bowl diameter), 3 1/4 in (foot diameter)",
             "(oval) image: 3 1/2 in x 2 1/2 in; 8.89 cm x 6.35 cm",
+            "13 11/16 × 10 11/16 in.",
         ],
         print_results=False,
         full_dump=False,
     )
+    debug = False
     print("Success!" if ok and not debug else res)
 
 mimsy_string = (
@@ -362,6 +372,7 @@ if is_notebook:
         print_results=False,
         full_dump=False,
     )
+    debug = False
     print("Success!" if ok and not debug else res)
 
 hdf_dimensions = pp.Group(
@@ -383,11 +394,43 @@ if is_notebook:
         print_results=False,
         full_dump=False,
     )
+    debug = False
     print("Success!" if ok and not debug else res)
 
 hdf_string = pp.Suppress(pp.CaselessLiteral("overall:")) + pp.OneOrMore(
     hdf_dimensions("facets*")
 )
+
+parenthetical_string = pp.Group(
+    pp.Optional(pp.Word(pp.alphas)("type*") + pp.Suppress(":"))
+    + vol("measurements*")
+    + pp.Suppress(pp.Optional("/"))
+    + pp.Suppress("(")
+    + pp.Optional(pp.Word(pp.alphas)("type*"))
+    + vol("measurements*")
+    + pp.Optional(pp.Word(pp.alphas)("type*"))
+    + pp.Suppress(")")
+)("facets*")
+
+
+if is_notebook:
+    parenthetical_tests = [
+        '11-1/4" x 13-3/4" / (frame 22-1/2" x 25")',
+        '17-1/2" x 23-1/2" / (25" x 30-3/4" framed)',
+        "30 1/16 x 35 1/16 inches (76.36 x 89.06 cm)",
+        "40 ¾ × 27 5/8 in. (103.5 × 70.2 cm)",
+        "Sheet: 13 11/16 × 10 11/16 in. (34.7 × 27.2 cm)",
+        "13 3/4 x 19 3/4 in (34.925 x 50.165 cm)",
+    ]
+
+    (ok, res) = parenthetical_string.run_tests(
+        parenthetical_tests,
+        print_results=False,
+        full_dump=False,
+    )
+    debug = True
+    print("Success!" if ok and not debug else res)
+
 
 if is_notebook:
     mimsy_string.create_diagram("default_parser.html", show_results_names=True)
@@ -409,6 +452,12 @@ if is_notebook:
     ex = hdf_string.parse_string(
         "overall: teacup - 1 3/4 in x 2 15/16 in; 4.445 cm x 7.46125 cm; saucer: 1 in x 4 3/4 in"
         # "overall: cup - 1 3/4 x 3 3/8 in.; 4.445 x 8.5725 cm; suacer 1 x 5 1/4 in."
+    )
+    print(ex)
+    print(ex.as_dict())
+
+    ex = parenthetical_string.parse_string(
+        '11-1/4" x 13-3/4" / (frame 22-1/2" x 25")',
     )
     print(ex)
     print(ex.as_dict())
@@ -653,7 +702,13 @@ for batch_no, batch in enumerate(measurements(last - 1)):
                 item["MEASUREMENTS"], print_results=False, full_dump=False
             )
 
+        paren_ok = False
         if not mimsy_ok and not dieaxis_ok and not hdf_ok:
+            (paren_ok, _) = parenthetical_string.run_tests(
+                item["MEASUREMENTS"], print_results=False, full_dump=False
+            )
+
+        if not mimsy_ok and not dieaxis_ok and not hdf_ok and not paren_ok:
             base_res["Parse Error"] = str(err)
 
         try:
@@ -663,7 +718,11 @@ for batch_no, batch in enumerate(measurements(last - 1)):
                 else (
                     hdf_string.parse_string(item["MEASUREMENTS"])
                     if hdf_ok
-                    else mimsy_string.parse_string(item["MEASUREMENTS"])
+                    else (
+                        parenthetical_string.parse_string(item["MEASUREMENTS"])
+                        if paren_ok
+                        else mimsy_string.parse_string(item["MEASUREMENTS"])
+                    )
                 )
             )
         except pp.ParseException:
@@ -734,12 +793,11 @@ if is_notebook:
 # %%
 if is_notebook:
     all_rows = pl.scan_parquet(output / "*.parquet")
+    all_rows.filter(pl.col("Parse Error").is_not_null()).sink_csv(
+        output / "parse_errors.csv"
+    )
     all_rows.filter(
-        pl.col("Parse Error").is_not_null()
-    ).sink_csv(output / "parse_errors.csv")
-    all_rows.filter(
-        pl.col("Inconsistent Units")
-        | pl.col("Too Many Dimensions")
+        pl.col("Inconsistent Units") | pl.col("Too Many Dimensions")
     ).sink_csv(output / "parse_anomalies.csv")
     all_rows.filter(
         pl.col("Parse Error").is_null()
