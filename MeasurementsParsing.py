@@ -316,8 +316,8 @@ if is_notebook:
 
 mimsy_string = (
     pp.OneOrMore(dimensions("facets*"))
-    #+ pp.Suppress(pp.Optional("cm"))
-    #+ pp.Suppress(pp.Optional("Image:"))
+    + pp.Suppress(pp.Optional("cm"))
+    + pp.Suppress(pp.Optional("Image:"))
 )
 
 dieaxis_string = pp.Group(
