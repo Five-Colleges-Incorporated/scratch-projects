@@ -343,10 +343,35 @@ if is_notebook:
     )
     print("Success!" if ok and not debug else res)
 
+hdf_dimensions = pp.Group(
+    pp.Group(pp.Word(pp.alphas))("type")
+    + pp.Suppress(pp.Optional(":") + pp.Optional("-"))
+    + pp.OneOrMore(vol("measurements*") + pp.Suppress(pp.Optional(";")))
+)
+
+if is_notebook:
+    hdf_tests = [
+        "teacup - 1 3/4 in x 2 15/16 in; 4.445 cm x 7.46125 cm",
+        "saucer: 1 in x 4 3/4 in",
+        "saucer - 7/8 x 4 5/8 in.",
+        "suacer 1 x 5 1/4 in.",
+    ]
+
+    (ok, res) = hdf_dimensions.run_tests(
+        hdf_tests,
+        print_results=False,
+        full_dump=False,
+    )
+    print("Success!" if ok and not debug else res)
+
+hdf_string = pp.Suppress(pp.CaselessLiteral("overall:")) + pp.OneOrMore(
+    hdf_dimensions("facets*")
+)
 
 if is_notebook:
     mimsy_string.create_diagram("default_parser.html", show_results_names=True)
     dieaxis_string.create_diagram("die-axis_parser.html", show_results_names=True)
+    hdf_string.create_diagram("historic-deerfield_parser.html", show_results_names=True)
 
     ex = mimsy_string.parse_string(
         "image: 6 1/16 in. x 6 in.; 15.39875 cm x 15.24 cm; chine collé: 6 3/4 in. x 6 1/2 in.; 17.145 cm x 16.51 cm; sheet: 15 3/4 in x 13 1/8 in; 40.005 cm x 33.3375 cm"
@@ -356,6 +381,13 @@ if is_notebook:
 
     ex = dieaxis_string.parse_string(
         "2 1/16 in. diameter; 5.2388 cm, weight 137.7 gm., die axis; 0 deg.",
+    )
+    print(ex)
+    print(ex.as_dict())
+
+    ex = hdf_string.parse_string(
+        "overall: teacup - 1 3/4 in x 2 15/16 in; 4.445 cm x 7.46125 cm; saucer: 1 in x 4 3/4 in"
+        # "overall: cup - 1 3/4 x 3 3/8 in.; 4.445 x 8.5725 cm; suacer 1 x 5 1/4 in."
     )
     print(ex)
     print(ex.as_dict())
@@ -528,6 +560,46 @@ if is_notebook:
     )
     print("Success!" if ok else res)
 
+    (ok, res) = dieaxis_string.run_tests(
+        """
+        # M_ID: 2129683
+         3/4 in. diameter; 1.905 cm, weight 3.0 gm., diexis 10 deg.""",
+        print_results=False,
+        full_dump=False,
+    )
+    print("Success!" if ok else res)
+
+    (ok, res) = mimsy_string.run_tests(
+        """
+        # M_ID: 2743
+        overall: teacup - 1 3/4 in x 2 15/16 in; 4.445 cm x 7.46125 cm; saucer: 1 in x 4 3/4 in
+        
+        # M_ID: 2756
+        overall: cup - 1 1/2 x 2 15/16 in.; saucer - 7/8 x 4 5/8 in.
+
+        # M_ID 2755
+        overall: cup - 1 3/4 x 3 3/8 in.; 4.445 x 8.5725 cm; suacer 1 x 5 1/4 in.""",
+        print_results=False,
+        full_dump=False,
+        failure_tests=True,
+    )
+    print("Success!" if ok else res)
+
+    (ok, res) = hdf_string.run_tests(
+        """
+        # M_ID: 2743
+        overall: teacup - 1 3/4 in x 2 15/16 in; 4.445 cm x 7.46125 cm; saucer: 1 in x 4 3/4 in
+        
+        # M_ID: 2756
+        overall: cup - 1 1/2 x 2 15/16 in.; saucer - 7/8 x 4 5/8 in.
+
+        # M_ID 2755
+        overall: cup - 1 3/4 x 3 3/8 in.; 4.445 x 8.5725 cm; suacer 1 x 5 1/4 in.""",
+        print_results=False,
+        full_dump=False,
+    )
+    print("Success!" if ok else res)
+
 # %% jupyter={"outputs_hidden": true}
 from copy import deepcopy
 from datetime import datetime
@@ -549,18 +621,27 @@ for batch_no, batch in enumerate(measurements(last - 1)):
         )
 
         if not mimsy_ok:
-            (dieaxis_ok, _) = dieaxis_ok.run_tests(
+            (dieaxis_ok, _) = dieaxis_string.run_tests(
                 item["MEASUREMENTS"], print_results=False, full_dump=False
             )
 
         if not mimsy_ok and not dieaxis_ok:
+            (hdf_ok, _) = hdf_string.run_tests(
+                item["MEASUREMENTS"], print_results=False, full_dump=False
+            )
+
+        if not mimsy_ok and not dieaxis_ok and not hdf_ok:
             base_res["Parse Error"] = str(err)
 
         try:
             dimensions = (
                 dieaxis_string.parse_string(item["MEASUREMENTS"])
                 if dieaxis_ok
-                else mimsy_string.parse_string(item["MEASUREMENTS"])
+                else (
+                    hdf_string.parse_string(item["MEASUREMENTS"])
+                    if hdf_ok
+                    else mimsy_string.parse_string(item["MEASUREMENTS"])
+                )
             )
         except pp.ParseException:
             results.append(base_res)
