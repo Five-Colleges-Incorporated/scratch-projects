@@ -161,6 +161,7 @@ dim = pp.Group(
                 "mm",
                 "g",
                 "gm",
+                "lbs",
                 "deg",
                 "minutes",
                 "seconds",
@@ -170,11 +171,11 @@ dim = pp.Group(
         + pp.Optional(
             pp.Optional(
                 pp.Combine(
-                    "("
+                    pp.Suppress("(")
                     + pp.Word(pp.alphas + "." + " ").set_parse_action(
                         pp.token_map(str.strip)
                     )
-                    + ")"
+                    + pp.Suppress(")")
                 )
             )
             + pp.Optional(
@@ -216,6 +217,7 @@ if is_notebook:
             "39 in (at highest point)",
             "3 3/4 in (diam. top)",
             "19 ½",
+            "50 lbs",
         ],
         print_results=False,
         full_dump=False,
@@ -225,6 +227,7 @@ if is_notebook:
 vol = pp.Group(
     pp.OneOrMore(
         pp.Optional(pp.Suppress("x"))
+        + pp.Optional(pp.Suppress(","))
         + dim("dimensions*")
         + pp.Optional(pp.Suppress("x"))
     )
@@ -246,17 +249,17 @@ dimensions = pp.Group(
             )
             + pp.Optional(
                 pp.Combine(
-                    "("
+                    pp.Suppress("(")
                     + pp.Word(
                         pp.alphanums + pp.alphas8bit + "-" + "." + ";" + "&" + " "
                     ).set_parse_action(pp.token_map(str.strip))
-                    + ")"
+                    + pp.Suppress(")")
                 )
             )
         )("type")
     )
     + pp.Suppress(pp.ZeroOrMore(":"))
-    + pp.OneOrMore(vol("measurements*") + pp.Suppress(pp.Optional(";")))
+    + pp.OneOrMore(vol("measurements*") + pp.Suppress(pp.ZeroOrMore(";")))
 )
 
 if is_notebook:
@@ -292,6 +295,7 @@ if is_notebook:
             # "plate; 10 3/8 in. x 12 3/8 in.; 26.3525 cm x 31.4325 cm",
             "overall (1): 1/2 x 10 1/4 in; 1.3 x 26 cm",
             "Overall, closed, without leaves: 28.5 x 56 x 24.375 in; 72.4 x 142.2 x 61.9 cm",
+            "Overall: 6 7/8 in (height), 3 5/16 in (bowl diameter), 3 1/4 in (foot diameter)",
         ],
         print_results=False,
         full_dump=False,
@@ -375,7 +379,7 @@ if is_notebook:
     hdf_string.create_diagram("historic-deerfield_parser.html", show_results_names=True)
 
     ex = mimsy_string.parse_string(
-        "image: 6 1/16 in. x 6 in.; 15.39875 cm x 15.24 cm; chine collé: 6 3/4 in. x 6 1/2 in.; 17.145 cm x 16.51 cm; sheet: 15 3/4 in x 13 1/8 in; 40.005 cm x 33.3375 cm"
+        "Overall: 6 7/8 in (height), 3 5/16 in (bowl diameter), 3 1/4 in (foot diameter)",
     )
     print(ex)
     print(ex.as_dict())
