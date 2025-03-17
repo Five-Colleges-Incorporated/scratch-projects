@@ -165,6 +165,7 @@ dim = pp.Group(
                 "deg",
                 "minutes",
                 "seconds",
+                "pages",
             ]
         )("unit")
         + pp.Optional(".")
@@ -218,6 +219,7 @@ if is_notebook:
             "3 3/4 in (diam. top)",
             "19 ½",
             "50 lbs",
+            "80 pages",
         ],
         print_results=False,
         full_dump=False,
@@ -312,7 +314,11 @@ if is_notebook:
     )
     print("Success!" if ok and not debug else res)
 
-mimsy_string = pp.OneOrMore(dimensions("facets*"))
+mimsy_string = (
+    pp.OneOrMore(dimensions("facets*"))
+    #+ pp.Suppress(pp.Optional("cm"))
+    #+ pp.Suppress(pp.Optional("Image:"))
+)
 
 dieaxis_string = pp.Group(
     pp.Empty().addParseAction(pp.replace_with(["diexis"]))("type")
@@ -389,7 +395,7 @@ if is_notebook:
     hdf_string.create_diagram("historic-deerfield_parser.html", show_results_names=True)
 
     ex = mimsy_string.parse_string(
-        "overall: 9 x 8 1/2 in.; cm"
+        "13 1/4 x 11 5/8 in.; 33.655 x 29.5275 cm; image: 9 7/8 x 7 7/8 in.; cm"
     )
     print(ex)
     print(ex.as_dict())
@@ -662,6 +668,7 @@ for batch_no, batch in enumerate(measurements(last - 1)):
             )
         except pp.ParseException:
             results.append(base_res)
+            continue
 
         for f in dimensions["facets"]:
             f_res = deepcopy(base_res)
