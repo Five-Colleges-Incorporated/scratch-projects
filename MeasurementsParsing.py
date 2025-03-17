@@ -428,14 +428,58 @@ if is_notebook:
         print_results=False,
         full_dump=False,
     )
-    debug = True
+    debug = False
     print("Success!" if ok and not debug else res)
 
+straight_string = pp.Group(
+    pp.Group(
+        pp.Group(
+            pp.Word(pp.nums + " " + "/").add_parse_action(pp.token_map(str.strip))(
+                "value"
+            )
+            + pp.Char('"')("unit")
+            + pp.Or([pp.Char("h"), pp.Char("H")])("context")
+        )("dimensions*")
+        + pp.Suppress("x")
+        + pp.Group(
+            pp.Word(pp.nums + " " + "/").add_parse_action(pp.token_map(str.strip))(
+                "value"
+            )
+            + pp.Char('"')("unit")
+            + pp.Or([pp.Char("w"), pp.Char("W")])("context")
+        )("dimensions*")
+        + pp.Suppress("x")
+        + pp.Group(
+            pp.Word(pp.nums + " " + "/").add_parse_action(pp.token_map(str.strip))(
+                "value"
+            )
+            + pp.Char('"')("unit")
+            + pp.Or([pp.Char("d"), pp.Char("D")])("context")
+        )("dimensions*")
+    )("measurements*")
+)("facets*")
+
+if is_notebook:
+    straight_tests = [
+        '40 1/2" H x 18 1/2" W x 15" D',
+        '73" H x 40" W x 20" D',
+        '19 3/8" H x 32" w x 16 1/2" D',
+    ]
+
+    (ok, res) = straight_string.run_tests(
+        straight_tests,
+        print_results=False,
+        full_dump=False,
+    )
+    debug = False
+    print("Success!" if ok and not debug else res)
 
 if is_notebook:
     mimsy_string.create_diagram("default_parser.html", show_results_names=True)
     dieaxis_string.create_diagram("die-axis_parser.html", show_results_names=True)
     hdf_string.create_diagram("historic-deerfield_parser.html", show_results_names=True)
+    parenthetical_string.create_diagram("parenthetical_parser.html", show_results_names=True)
+    straight_string.create_diagram("straight_parser.html", show_results_names=True)
 
     ex = mimsy_string.parse_string(
         "Overall: 6 in (height), 2 1/8 in (bowl diameter), 3 1/8 in (foot diameter); 15.2 cm (height), 5.4 cm (bowl diameter), 7.9 (foot diameter)"
@@ -458,6 +502,12 @@ if is_notebook:
 
     ex = parenthetical_string.parse_string(
         '11-1/4" x 13-3/4" / (frame 22-1/2" x 25")',
+    )
+    print(ex)
+    print(ex.as_dict())
+
+    ex = straight_string.parse_string(
+        '19 3/8" H x 32" w x 16 1/2" D',
     )
     print(ex)
     print(ex.as_dict())
@@ -708,7 +758,19 @@ for batch_no, batch in enumerate(measurements(last - 1)):
                 item["MEASUREMENTS"], print_results=False, full_dump=False
             )
 
+        straight_ok = False
         if not mimsy_ok and not dieaxis_ok and not hdf_ok and not paren_ok:
+            (straight_ok, _) = straight_string.run_tests(
+                item["MEASUREMENTS"], print_results=False, full_dump=False
+            )
+
+        if (
+            not mimsy_ok
+            and not dieaxis_ok
+            and not hdf_ok
+            and not paren_ok
+            and not straight_ok
+        ):
             base_res["Parse Error"] = str(err)
 
         try:
@@ -721,7 +783,11 @@ for batch_no, batch in enumerate(measurements(last - 1)):
                     else (
                         parenthetical_string.parse_string(item["MEASUREMENTS"])
                         if paren_ok
-                        else mimsy_string.parse_string(item["MEASUREMENTS"])
+                        else (
+                            straight_string.parse_string(item["MEASUREMENTS"])
+                            if straight_ok
+                            else mimsy_string.parse_string(item["MEASUREMENTS"])
+                        )
                     )
                 )
             )
