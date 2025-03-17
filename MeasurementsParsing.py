@@ -300,7 +300,7 @@ if is_notebook:
 mimsy_string = pp.OneOrMore(dimensions("facets*"))
 
 dieaxis_string = pp.Group(
-    pp.Empty().addParseAction(pp.replace_with(['diexis']))("type")
+    pp.Empty().addParseAction(pp.replace_with(["diexis"]))("type")
     + pp.Group(dim("dimensions*"))("measurements*")
     + pp.Suppress(";")
     + pp.Group(dim("dimensions*"))("measurements*")
@@ -544,15 +544,24 @@ for batch_no, batch in enumerate(measurements(last - 1)):
     for item in batch.to_dicts():
         base_res = {"M_ID": item["M_ID"], "MEASUREMENTS": item["MEASUREMENTS"]}
 
-        (ok, err) = mimsy_string.run_tests(
+        (mimsy_ok, err) = mimsy_string.run_tests(
             item["MEASUREMENTS"], print_results=False, full_dump=False
         )
 
-        if not ok:
+        if not mimsy_ok:
+            (dieaxis_ok, _) = dieaxis_ok.run_tests(
+                item["MEASUREMENTS"], print_results=False, full_dump=False
+            )
+
+        if not mimsy_ok and not dieaxis_ok:
             base_res["Parse Error"] = str(err)
 
         try:
-            dimensions = mimsy_string.parse_string(item["MEASUREMENTS"])
+            dimensions = (
+                dieaxis_string.parse_string(item["MEASUREMENTS"])
+                if dieaxis_ok
+                else mimsy_string.parse_string(item["MEASUREMENTS"])
+            )
         except pp.ParseException:
             results.append(base_res)
 
