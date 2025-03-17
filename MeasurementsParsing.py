@@ -395,7 +395,7 @@ if is_notebook:
     hdf_string.create_diagram("historic-deerfield_parser.html", show_results_names=True)
 
     ex = mimsy_string.parse_string(
-        "13 1/4 x 11 5/8 in.; 33.655 x 29.5275 cm; image: 9 7/8 x 7 7/8 in.; cm"
+        "Overall: 6 in (height), 2 1/8 in (bowl diameter), 3 1/8 in (foot diameter); 15.2 cm (height), 5.4 cm (bowl diameter), 7.9 (foot diameter)"
     )
     print(ex)
     print(ex.as_dict())
@@ -736,9 +736,11 @@ if is_notebook:
     all_rows = pl.scan_parquet(output / "*.parquet")
     all_rows.filter(
         pl.col("Parse Error").is_not_null()
-        | pl.col("Inconsistent Units")
-        | pl.col("Too Many Dimensions")
     ).sink_csv(output / "parse_errors.csv")
+    all_rows.filter(
+        pl.col("Inconsistent Units")
+        | pl.col("Too Many Dimensions")
+    ).sink_csv(output / "parse_anomalies.csv")
     all_rows.filter(
         pl.col("Parse Error").is_null()
         & pl.col("Inconsistent Units").not_()
