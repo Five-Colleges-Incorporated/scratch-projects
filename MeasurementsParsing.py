@@ -187,7 +187,7 @@ dim = pp.Group(
 )
 
 if is_notebook:
-    debug = True
+    debug = False
     (ok, res) = dim.run_tests(
         [
             "15/16 in",
@@ -299,8 +299,54 @@ if is_notebook:
 
 mimsy_string = pp.OneOrMore(dimensions("facets*"))
 
+dieaxis_string = pp.Group(
+    pp.Empty().addParseAction(pp.replace_with(['diexis']))("type")
+    + pp.Group(dim("dimensions*"))("measurements*")
+    + pp.Suppress(";")
+    + pp.Group(dim("dimensions*"))("measurements*")
+    + pp.Suppress(",")
+    + pp.Suppress(pp.Literal("weight"))
+    + pp.Group(dim("dimensions*"))("measurements*")
+    + pp.Suppress(",")
+    + pp.Group(
+        pp.Suppress(
+            pp.Combine(
+                pp.Literal("die")
+                + pp.Optional(pp.Suppress(pp.White() + pp.Char("a")))
+                + pp.Literal("xis")
+                + pp.Optional(pp.Suppress(";"))
+            )
+        )
+        + dim("dimensions*")
+    )("measurements*")
+)("facets")
+
+
 if is_notebook:
-    mimsy_string.create_diagram("parser.html", show_results_names=True)
+    dieaxis_tests = [
+        "5/8 in. diameter; 1.5875 cm, weight 3.8 gm., diexis 0",
+        "2 1/16 in. diameter; 5.2388 cm, weight 137.7 gm., die axis; 0 deg.",
+    ]
+
+    (ok, res) = dimensions.run_tests(
+        dieaxis_tests,
+        print_results=False,
+        full_dump=False,
+        failure_tests=True,
+    )
+    print("Success!" if ok and not debug else res)
+
+    (ok, res) = dieaxis_string.run_tests(
+        dieaxis_tests,
+        print_results=False,
+        full_dump=False,
+    )
+    print("Success!" if ok and not debug else res)
+
+
+if is_notebook:
+    mimsy_string.create_diagram("default_parser.html", show_results_names=True)
+    dieaxis_string.create_diagram("die-axis_parser.html", show_results_names=True)
 
     ex = mimsy_string.parse_string(
         "image: 6 1/16 in. x 6 in.; 15.39875 cm x 15.24 cm; chine collé: 6 3/4 in. x 6 1/2 in.; 17.145 cm x 16.51 cm; sheet: 15 3/4 in x 13 1/8 in; 40.005 cm x 33.3375 cm"
@@ -308,6 +354,14 @@ if is_notebook:
     print(ex)
     print(ex.as_dict())
 
+    ex = dieaxis_string.parse_string(
+        "2 1/16 in. diameter; 5.2388 cm, weight 137.7 gm., die axis; 0 deg.",
+    )
+    print(ex)
+    print(ex.as_dict())
+
+# %%
+if is_notebook:
     (ok, res) = mimsy_string.run_tests(
         """
 
@@ -374,8 +428,6 @@ if is_notebook:
         # M_ID: 2116676
         sheet: 19 1/8 x 24 1/8 in.; 48.5775 x 61.2775 cm
 
-        # M_ID: 2129683
-         3/4 in. diameter; 1.905 cm, weight 3.0 gm., diexis 10 deg.
 
         # M_ID: 3000196
         overall: 6 in x 2 5/8 in; 15.2 cm x 6.7 cm
@@ -464,12 +516,19 @@ if is_notebook:
         print_results=False,
         full_dump=False,
     )
-    if not debug:
-        print("Success!" if ok else res)
+    print("Success!" if ok else res)
 
-# %%
+    (ok, res) = mimsy_string.run_tests(
+        """
+        # M_ID: 2129683
+         3/4 in. diameter; 1.905 cm, weight 3.0 gm., diexis 10 deg.""",
+        print_results=False,
+        full_dump=False,
+        failure_tests=True,
+    )
+    print("Success!" if ok else res)
 
-# %%
+# %% jupyter={"outputs_hidden": true}
 from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
@@ -488,6 +547,7 @@ for batch_no, batch in enumerate(measurements(last - 1)):
         (ok, err) = mimsy_string.run_tests(
             item["MEASUREMENTS"], print_results=False, full_dump=False
         )
+
         if not ok:
             base_res["Parse Error"] = str(err)
 
@@ -495,8 +555,6 @@ for batch_no, batch in enumerate(measurements(last - 1)):
             dimensions = mimsy_string.parse_string(item["MEASUREMENTS"])
         except pp.ParseException:
             results.append(base_res)
-        except:
-            last = item["M_ID"]
 
         for f in dimensions["facets"]:
             f_res = deepcopy(base_res)
@@ -553,7 +611,7 @@ for batch_no, batch in enumerate(measurements(last - 1)):
 if is_notebook:
     print(f"{output} done!")
 
-# %%
+# %% jupyter={"source_hidden": true, "outputs_hidden": true}
 if is_notebook:
     all_rows = pl.scan_parquet(output / "*.parquet")
     all_rows.filter(pl.col("Parse Error").is_not_null()).sink_csv(
@@ -566,5 +624,3 @@ if is_notebook:
         output / "parse_results.csv"
     )
 
-
-# %%
