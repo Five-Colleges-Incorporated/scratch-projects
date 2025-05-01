@@ -1,0 +1,12 @@
+---
+name: greenglass-export
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python>=3.12,<3.13
+  - polars==1.22.0
+  - python-dotenv>=1.0.1,<2
+  - pip
+  - pip:
+    - pyfolioclient>=0.1.7,<1

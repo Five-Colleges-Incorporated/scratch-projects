@@ -3,5 +3,6 @@
 *.csv
 *.parquet
 *.log
+*.mrc
 .env
 *.ipynb
