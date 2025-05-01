@@ -1,0 +1,7 @@
+**/output/**/*
+*.tsv
+*.csv
+*.parquet
+*.log
+.env
+*.ipynb
