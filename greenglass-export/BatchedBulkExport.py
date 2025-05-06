@@ -31,7 +31,7 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
-#env = "DEV"
+# env = "DEV"
 env = "PROD"
 fep = os.getenv(f"FOLIO_ENDPOINT_{env}")
 fte = os.getenv(f"FOLIO_TENANT_{env}")
@@ -45,11 +45,6 @@ pl.read_csv("./missing_bibs.csv").select(pl.col("item_hrid")).filter(
         pl.col("item_hrid").str.len_chars().ge(10),
     )
 ).unique().sort("item_hrid").write_csv("./unique_itemids.csv")
-
-# %%
-items = pl.scan_csv("./unique_itemids.csv").select(
-    pl.lit('items.hrid="') + pl.col("item_hrid") + pl.lit('"')
-)
 
 # %%
 items = (
@@ -95,22 +90,35 @@ with FolioBaseClient(fep, fte, fun, fpw) as folio:
             in_place=True,
         )
 
-instance_ids.rechunk().unique("instance_id").write_csv(f"unique_instanceids_{env}.csv")
+instance_ids.rechunk().unique("instance_id").sort("instance_id").write_csv(
+    f"unique_instanceids_{env}.csv"
+)
 print()
 print((time.time() - start) / 60)
+
+# %%
+pl.read_csv(f"unique_instanceids_{env}.csv").with_row_index().filter(
+    pl.col("index").ge(pl.lit(1500)),
+    pl.col("index").lt(pl.lit(2000)),
+).sort("instance_id").drop("index").write_csv("has_four_failures.csv")
 
 # %%
 start = time.time()
 run = uuid.uuid4()
 
+#source = f"unique_instanceids_{env}.csv"
+source = f"has_four_failures.csv"
+
 job_ids = []
 file_ids = []
 sample_size = 2000000
-batch_size = 2000
+batch_size = 1
 rows_batched = batch_size
 batch_num = 0
 with FolioBaseClient(fep, fte, fun, fpw) as folio:
-    instances = pl.scan_csv(f"unique_instanceids_{env}.csv").with_row_index().head(sample_size)
+    instances = (
+        pl.scan_csv(source).with_row_index().head(sample_size)
+    )
     while rows_batched == batch_size:
         if batch_num % 10 == 0:
             print(f"{batch_num}, ", end="")
@@ -120,6 +128,7 @@ with FolioBaseClient(fep, fte, fun, fpw) as folio:
                 pl.col("index").lt(pl.lit(batch_size * (batch_num + 1))),
             )
         )
+        batch_name = f"_{batch_size * batch_num}-{batch_size * (batch_num + 1)}_"
         batch_num += 1
         rows_batched = int(batch.select(pl.len()).collect().item())
 
@@ -129,7 +138,7 @@ with FolioBaseClient(fep, fte, fun, fpw) as folio:
         csv.seek(0)
         req = {
             "size": int(csv.getbuffer().nbytes / 2**10),
-            "fileName": str(run) + ".csv",
+            "fileName": str(run) + batch_name + ".csv",
             "uploadFormat": "csv",
         }
         csv.seek(0)
@@ -149,7 +158,7 @@ print((time.time() - start) / 60)
 # %%
 start = time.time()
 
-concurrency_limit = 4
+concurrency_limit = 6
 
 with FolioBaseClient(fep, fte, fun, fpw) as folio:
     print(f"{len(file_ids)}, ", end="")
@@ -193,10 +202,24 @@ print()
 print((time.time() - start) / 60)
 
 # %%
+with FolioBaseClient(fep, fte, fun, fpw) as folio:
+    res = folio.get_data(
+            "/data-export/job-executions",
+            key="jobExecutions",
+            cql_query=f'status="COMPLETED_WITH_ERRORS" sortBy completedDate/sort.descending',
+            limit=10,
+        )
+    import pprint
+    pprint.pprint(res)
+
+# %%
+
+# %%
 start = time.time()
 
 jids = job_ids.copy()
-errors = None
+instance_errors = None
+job_errors = None
 with FolioBaseClient(fep, fte, fun, fpw) as folio:
     output = Path(str(run))
     output.mkdir()
@@ -218,7 +241,7 @@ with FolioBaseClient(fep, fte, fun, fpw) as folio:
             res = httpx.get(res["link"])
             with (output / marc_name).open("wb") as f:
                 f.write(res.content)
-                
+
         if job["status"] == "COMPLETED_WITH_ERRORS":
             res = folio.get_data(
                 f"/data-export/logs",
@@ -229,14 +252,26 @@ with FolioBaseClient(fep, fte, fun, fpw) as folio:
             for err in res:
                 print(err)
                 if "affectedRecord" in err:
-                    if errors is None:
-                        errors = pl.DataFrame(err)
+                    if instance_errors is None:
+                        instance_errors = pl.DataFrame(err)
                     else:
-                        errors.vstack(pl.DataFrame(err), in_place=True)
+                        instance_errors.vstack(pl.DataFrame(err), in_place=True)
+                else:
+                    if job_errors is None:
+                        job_errors = pl.DataFrame(job_errors)
+                    else:
+                        job_errors.vstack(pl.DataFrame(err), in_place=True)
 
-errors.rechunk().with_columns(pl.col("affectedRecord").struct.unnest()).drop(
-    "affectedRecord"
-).write_parquet(output / "errors.parquet")
+if instance_errors is not None:
+    instance_errors = (
+        instance_errors.rechunk()
+        .with_columns(pl.col("affectedRecord").struct.unnest())
+        .drop("affectedRecord")
+    )
+
+if job_errors is not None:
+    job_errors = job_errors.rechunk()
+
 
 print()
 print((time.time() - start) / 60)
