@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.17.0
+#       jupytext_version: 1.17.1
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -17,6 +17,7 @@
 
 # %%
 import io
+import shutil
 import time
 import uuid
 from pathlib import Path
@@ -106,19 +107,17 @@ pl.read_csv(f"unique_instanceids_{env}.csv").with_row_index().filter(
 start = time.time()
 run = uuid.uuid4()
 
-#source = f"unique_instanceids_{env}.csv"
-source = f"has_four_failures.csv"
+source = f"unique_instanceids_{env}.csv"
+# source = f"has_four_failures.csv"
 
 job_ids = []
 file_ids = []
 sample_size = 2000000
-batch_size = 1
+batch_size = 100
 rows_batched = batch_size
 batch_num = 0
 with FolioBaseClient(fep, fte, fun, fpw) as folio:
-    instances = (
-        pl.scan_csv(source).with_row_index().head(sample_size)
-    )
+    instances = pl.scan_csv(source).with_row_index().head(sample_size)
     while rows_batched == batch_size:
         if batch_num % 10 == 0:
             print(f"{batch_num}, ", end="")
@@ -158,7 +157,7 @@ print((time.time() - start) / 60)
 # %%
 start = time.time()
 
-concurrency_limit = 6
+concurrency_limit = 4
 
 with FolioBaseClient(fep, fte, fun, fpw) as folio:
     print(f"{len(file_ids)}, ", end="")
@@ -204,15 +203,25 @@ print((time.time() - start) / 60)
 # %%
 with FolioBaseClient(fep, fte, fun, fpw) as folio:
     res = folio.get_data(
-            "/data-export/job-executions",
-            key="jobExecutions",
-            cql_query=f'status="COMPLETED_WITH_ERRORS" sortBy completedDate/sort.descending',
-            limit=10,
-        )
+        "/data-export/job-executions",
+        key="jobExecutions",
+        cql_query=f'status="COMPLETED_WITH_ERRORS" sortBy completedDate/sort.descending',
+        limit=10,
+    )
     import pprint
+
     pprint.pprint(res)
 
 # %%
+run = uuid.UUID("d7975a00-0a2b-45f3-b525-f5dd94292f46")
+with FolioBaseClient(fep, fte, fun, fpw) as folio:
+    res = folio.get_data(
+        "/data-export/job-executions",
+        key="jobExecutions",
+        cql_query=f"status=(COMPLETED_WITH_ERRORS)",
+        limit=5,
+    )
+    job_ids = [r["id"] for r in res]
 
 # %%
 start = time.time()
@@ -222,6 +231,7 @@ instance_errors = None
 job_errors = None
 with FolioBaseClient(fep, fte, fun, fpw) as folio:
     output = Path(str(run))
+    shutil.rmtree(output)
     output.mkdir()
     print(f"{len(jids)}, ", end="")
     while len(jids) > 0:
@@ -247,38 +257,75 @@ with FolioBaseClient(fep, fte, fun, fpw) as folio:
                 f"/data-export/logs",
                 key="errorLogs",
                 limit=10000,
-                cql_query=f'jobExecutionId=="{job_id}"',
+                cql_query=f'jobExecutionId=="{job["id"]}"',
             )
             for err in res:
-                print(err)
                 if "affectedRecord" in err:
                     if instance_errors is None:
-                        instance_errors = pl.DataFrame(err)
+                        instance_errors = pl.DataFrame([err])
                     else:
-                        instance_errors.vstack(pl.DataFrame(err), in_place=True)
+                        instance_errors.vstack(pl.DataFrame([err]), in_place=True)
                 else:
                     if job_errors is None:
-                        job_errors = pl.DataFrame(job_errors)
+                        job_errors = pl.DataFrame([err])
                     else:
-                        job_errors.vstack(pl.DataFrame(err), in_place=True)
+                        job_errors.vstack(pl.DataFrame([err]), in_place=True)
 
 if instance_errors is not None:
+    instance_errors.glimpse()
     instance_errors = (
         instance_errors.rechunk()
         .with_columns(pl.col("affectedRecord").struct.unnest())
-        .drop("affectedRecord")
+        .select(
+            pl.col("id").alias("instanceId"),
+            pl.col("errorMessageCode").alias("errorCode"),
+            pl.col("errorMessageValues")
+            .list.join(separator="\n")
+            .alias("errorMessage"),
+            "inventoryRecordLink",
+        )
     )
+    instance_errors.glimpse()
 
 if job_errors is not None:
+    job_errors.glimpse()
     job_errors = job_errors.rechunk()
+    opaque_errs = job_errors.filter(
+        pl.col("errorMessageCode").eq("error.someRecordsFailed")
+    ).select(
+        "jobExecutionId", pl.col("errorMessageValues").list.first().alias("errors")
+    )
+    opaque_errs.glimpse()
+    job_errors = job_errors.filter(
+        pl.col("errorMessageCode").ne("error.someRecordsFailed")
+    ).select(
+        pl.col("errorMessageValues").list.first().alias("instanceId"),
+        pl.col("errorMessageCode").alias("errorCode"),
+        pl.col("errorMessageValues")
+        .list.slice(1)
+        .list.join(separator="\n")
+        .alias("errorMessage"),
+        pl.lit("").alias("inventoryRecordLink"),
+    )
+    job_errors.glimpse()
 
+if instance_errors and job_errors:
+    instance_errors.concat(job_errors)
+else if job_errors:
+    instance_errors = job_errors
+
+if instance_errors:
+    instance_errors.write_csv(output / "errors.csv")
+
+if opaque_errs:
+    opaque_errs.write_csv(output / "opaque_errors.csv")
 
 print()
 print((time.time() - start) / 60)
 print(run)
 
 # %%
-errors = pl.read_parquet(output / "errors.parquet")
-errors.glimpse()
+job_errors.glimpse()
+instance_errors.glimpse()
 
 # %%
