@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.16.7
+#       jupytext_version: 1.17.1
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -18,9 +18,9 @@
 # %%
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 
-# %%
+# %% jupyter={"source_hidden": true}
 is_notebook = False
 try:
     get_ipython()
@@ -44,8 +44,18 @@ mimsy = oracledb.connect(
 mimsy.is_healthy()
 
 # %%
+query = """
+SELECT M_ID, MEASUREMENTS FROM CATALOGUE 
+WHERE 
+    M_ID > {0}
+    AND MEASUREMENTS IS NOT NULL 
+    AND mkey not in (select mkey from measurements)
+    AND mkey not in (select mkey from tbl_diams_weights)
+    AND mkey not in (select mkey from tbl_new_linear_measurements)
+ORDER BY M_ID ASC
+"""
 # query = "SELECT M_ID, MEASUREMENTS FROM CATALOGUE WHERE MEASUREMENTS IS NOT NULL FETCH NEXT 10 ROWS ONLY"
-query = "SELECT M_ID, MEASUREMENTS FROM CATALOGUE WHERE M_ID > {0} AND MEASUREMENTS IS NOT NULL ORDER BY M_ID ASC"
+# query = "SELECT M_ID, MEASUREMENTS FROM CATALOGUE WHERE M_ID > {0} AND MEASUREMENTS IS NOT NULL ORDER BY M_ID ASC"
 '''
 query = """
 SELECT
@@ -133,7 +143,7 @@ if is_notebook:
     """
     print(tests)
 
-# %%
+# %% jupyter={"source_hidden": true}
 import pyparsing as pp
 
 
@@ -478,7 +488,9 @@ if is_notebook:
     mimsy_string.create_diagram("default_parser.html", show_results_names=True)
     dieaxis_string.create_diagram("die-axis_parser.html", show_results_names=True)
     hdf_string.create_diagram("historic-deerfield_parser.html", show_results_names=True)
-    parenthetical_string.create_diagram("parenthetical_parser.html", show_results_names=True)
+    parenthetical_string.create_diagram(
+        "parenthetical_parser.html", show_results_names=True
+    )
     straight_string.create_diagram("straight_parser.html", show_results_names=True)
 
     ex = mimsy_string.parse_string(
@@ -512,7 +524,7 @@ if is_notebook:
     print(ex)
     print(ex.as_dict())
 
-# %%
+# %% jupyter={"source_hidden": true}
 if is_notebook:
     (ok, res) = mimsy_string.run_tests(
         """
@@ -873,5 +885,175 @@ if is_notebook:
         output / "parse_results.csv"
     )
 
+
+# %%
+import pyparsing as pp
+
+
+def check(parser, cases, out=None):
+    ok, res = parser.run_tests(cases, print_results=False, full_dump=False)
+    if out != False and (out == True or not ok):
+        print()
+        for r in res:
+            print(r)
+
+
+dim = pp.Combine(
+    pp.Optional(".")
+    + pp.Word(pp.nums)
+    + pp.Optional("." + pp.Word(pp.nums))
+    + pp.Optional("/" + pp.Word(pp.nums))
+    + pp.Optional(" " + pp.Word(pp.nums) + "/" + pp.Word(pp.nums))
+)
+check(dim, ["1", "23", "2.8", ".88", "33.77", "1 1/4", "13/17"])
+
+imperial_units = pp.one_of(["in", "in.", "inches", '"'], caseless=True)
+imperial_unit = pp.Optional(pp.Suppress(pp.Optional(" ")) + imperial_units)
+imperial = pp.OneOrMore(
+    pp.Combine(dim("dims*") + imperial_unit("units*") + pp.Suppress(pp.Optional(" x ")))
+)
+check(imperial, ["1 in", "3.5in.", "2 x 3 inches", '1 3/4" x 1/2 in'])
+
+metric_units = pp.one_of(["cm", "cm.", "mm", "mm.", "m", "m."], caseless=True)
+metric_unit = pp.Optional(pp.Suppress(pp.Optional(" ")) + metric_units)
+metric = pp.OneOrMore(
+    pp.Combine(dim("dims*") + metric_unit("units*") + pp.Suppress(pp.Optional(" x ")))
+)
+check(metric, ["5cm", "65mm.", "10.4 m. x 15 cm"])
+
+measurement = pp.OneOrMore(
+    pp.Group(pp.Or([metric, imperial]))("measurements*") + pp.Suppress(pp.Optional(";"))
+)
+check(
+    measurement,
+    [
+        "1 in",
+        "3.5in.",
+        "2 x 3 inches",
+        '1 3/4" x 1/2 in',
+        "5cm",
+        "65mm.",
+        "10.4 m. x 15 cm",
+        "20 1/2 x 15 in.; 52.07 x 38.1 cm",
+    ],
+)
+
+types = pp.one_of(
+    [
+        "base",
+        "block",
+        "board",
+        "canvas",
+        "frame",
+        "housing",
+        "image",
+        "mat",
+        "mount",
+        "overall",
+        "panel",
+        "plate",
+        "sheet",
+        "sight",
+        "stone",
+        "stretcher",
+    ],
+    caseless=True,
+)
+facet = pp.Group(pp.Optional(types("type*") + pp.Suppress(":")) + measurement)(
+    "facets*"
+)
+check(
+    facet,
+    [
+        ".875 x .5 in.",
+        "sheet: 13 x 17 1/2 in",
+    ],
+)
+
+easy_parser = pp.OneOrMore(facet + pp.Suppress(pp.Optional(";")))
+check(
+    easy_parser,
+    [
+        ".875 x .5 in.",
+        "sheet: 13 x 17 1/2 in",
+        "sheet: 13 x 17 1/2 in.; stone: 10 x 12 1/4 in.",
+    ]
+)
+easy_parser.create_diagram("easy_parser.html", show_results_names=True)
+
+# %%
+from copy import deepcopy
+from datetime import datetime
+from pathlib import Path
+import pyparsing as pp
+
+last = 0
+output = Path("output", datetime.now().strftime("%m%d%H%M%S"))
+output.mkdir(parents=True, exist_ok=False)
+for batch_no, batch in enumerate(measurements(last - 1)):
+    if is_notebook:
+        print(f"{batch_no}...")
+
+    results = []
+    for item in batch.to_dicts():
+        base_res = {"M_ID": item["M_ID"], "MEASUREMENTS": item["MEASUREMENTS"]}
+        
+        (ok, err) = easy_parser.run_tests(
+            item["MEASUREMENTS"], print_results=False, full_dump=False
+        ) 
+        if not ok:
+            parsed["Test Error"] = str(err)
+
+        try:
+            res = mimsy_string.parse_string(item["MEASUREMENTS"])
+        except pp.ParseException as e: 
+            base_res["Parse Error"] = str(e)
+            results.append(base_res)
+            continue
+
+        for f in parsed["facets"]:
+            f_res = deepcopy(base_res)
+            f_res["Type"] = f["type"] if "type" in f else "overall"
+
+            if not "measurements" in f:
+                results.append(f_res)
+
+            for m in f["measurements"]:
+                m_res = deepcopy(f_res)
+                units = set()
+                if not "dims" in f:
+                    results.append(m_res)
+                    continue
+                
+                for i, d in enumerate(m["dims"]):
+                    if i >= 3:
+                        break
+                    m_res[f"Dimension{i+1}"] = d
+                    units.add(m["units"][min(len(m["units"]) - 1, i)])
+
+                m_res[f"Units"] = ", ".join(units)
+                results.append(m_res)
+
+        pl.DataFrame(
+            results,
+            schema=[
+                ("M_ID", pl.Int64),
+                ("MEASUREMENTS", pl.String),
+                ("Test Error", pl.String),
+                ("Parse Error", pl.String),
+                ("Type", pl.String),
+                ("Units", pl.String),
+                ("Dimension1", pl.String),
+                ("Dimension2", pl.String),
+                ("Dimension3", pl.String),
+            ],
+            # ).write_csv(output / f"{batch_no:03d}.csv")
+        ).write_parquet(output / f"{batch_no:03d}.parquet")
+
+if is_notebook:
+    print(f"{output} done!")
+        
+
+        
 
 # %%
