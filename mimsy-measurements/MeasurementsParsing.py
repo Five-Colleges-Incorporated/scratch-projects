@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.17.1
+#       jupytext_version: 1.16.7
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 
 load_dotenv(override=True)
 
-# %% jupyter={"source_hidden": true}
+# %%
 is_notebook = False
 try:
     get_ipython()
@@ -45,13 +45,13 @@ mimsy.is_healthy()
 
 # %%
 query = """
-SELECT M_ID, MEASUREMENTS FROM CATALOGUE 
+SELECT M_ID, MEASUREMENTS FROM CATALOGUE
 WHERE 
     M_ID > {0}
     AND MEASUREMENTS IS NOT NULL 
     AND mkey not in (select mkey from measurements)
-    AND mkey not in (select mkey from tbl_diams_weights)
-    AND mkey not in (select mkey from tbl_new_linear_measurements)
+    AND mkey not in (select mkey from diams_weights)
+    AND mkey not in (select mkey from new_linear_measurements)
 ORDER BY M_ID ASC
 """
 # query = "SELECT M_ID, MEASUREMENTS FROM CATALOGUE WHERE MEASUREMENTS IS NOT NULL FETCH NEXT 10 ROWS ONLY"
@@ -732,7 +732,7 @@ if is_notebook:
     )
     print("Success!" if ok else res)
 
-# %%
+# %% jupyter={"source_hidden": true}
 from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
@@ -871,18 +871,13 @@ if is_notebook:
 # %%
 if is_notebook:
     all_rows = pl.scan_parquet(output / "*.parquet")
-    all_rows.filter(pl.col("Parse Error").is_not_null()).sink_csv(
-        output / "parse_errors.csv"
-    )
     all_rows.filter(
-        pl.col("Inconsistent Units") | pl.col("Too Many Dimensions")
-    ).sink_csv(output / "parse_anomalies.csv")
-    all_rows.filter(
-        pl.col("Parse Error").is_null()
-        & pl.col("Inconsistent Units").not_()
-        & pl.col("Too Many Dimensions").not_()
-    ).drop("Parse Error", "Inconsistent Units", "Too Many Dimensions").sink_csv(
-        output / "parse_results.csv"
+        pl.Expr.or_(
+            pl.col("Parse Error").is_not_null(), pl.col("Test Error").is_not_null()
+        )
+    ).sink_csv(output / "errors.csv")
+    all_rows.filter(pl.col("Parse Error").is_null()).drop("Parse Error").sink_csv(
+        output / "results.csv"
     )
 
 
@@ -907,22 +902,57 @@ dim = pp.Combine(
 )
 check(dim, ["1", "23", "2.8", ".88", "33.77", "1 1/4", "13/17"])
 
-imperial_units = pp.one_of(["in", "in.", "inches", '"'], caseless=True)
-imperial_unit = pp.Optional(pp.Suppress(pp.Optional(" ")) + imperial_units)
-imperial = pp.OneOrMore(
+inches_unit = pp.Optional(
+    pp.Suppress(pp.Optional(" "))
+    + pp.one_of(["in", "in.", "inches", '"'], caseless=True)
+)
+feet_unit = pp.Optional(
+    pp.Suppress(pp.Optional(" ")) + pp.one_of(["ft", "ft.", "feet", "'"], caseless=True)
+)
+imperial_unit = pp.Or([inches_unit, feet_unit])
+single_imperial = pp.OneOrMore(
     pp.Combine(dim("dims*") + imperial_unit("units*") + pp.Suppress(pp.Optional(" x ")))
 )
-check(imperial, ["1 in", "3.5in.", "2 x 3 inches", '1 3/4" x 1/2 in'])
+check(
+    single_imperial,
+    [
+        "1 in",
+        "3.5in.",
+        "2 x 3 x 5 inches",
+        '1 3/4" x 1/2 in',
+        "4'",
+        "5 ft.",
+    ],
+)
 
-metric_units = pp.one_of(["cm", "cm.", "mm", "mm.", "m", "m."], caseless=True)
-metric_unit = pp.Optional(pp.Suppress(pp.Optional(" ")) + metric_units)
+double_imperial = pp.OneOrMore(
+    pp.Combine(
+        pp.Optional(dim("dimsft*") + feet_unit("units*") + " ")
+        + dim("dimsin*")
+        + imperial_unit("units*")
+        + pp.Suppress(pp.Optional(" x "))
+    )
+)
+check(
+    double_imperial,
+    [
+        "4' 3\"",
+        "2' x 3' 2\" x 5\"",
+    ],
+)
+
+metric_unit = pp.Optional(
+    pp.Suppress(pp.Optional(" "))
+    + pp.one_of(["cm", "cm.", "mm", "mm.", "m", "m."], caseless=True)
+)
 metric = pp.OneOrMore(
     pp.Combine(dim("dims*") + metric_unit("units*") + pp.Suppress(pp.Optional(" x ")))
 )
 check(metric, ["5cm", "65mm.", "10.4 m. x 15 cm"])
 
 measurement = pp.OneOrMore(
-    pp.Group(pp.Or([metric, imperial]))("measurements*") + pp.Suppress(pp.Optional(";"))
+    pp.Group(pp.Or([metric, double_imperial, single_imperial]))("measurements*")
+    + pp.Suppress(pp.Optional(";"))
 )
 check(
     measurement,
@@ -935,6 +965,7 @@ check(
         "65mm.",
         "10.4 m. x 15 cm",
         "20 1/2 x 15 in.; 52.07 x 38.1 cm",
+        "1' 3/4\" x 2 ft. 1/2 in",
     ],
 )
 
@@ -977,7 +1008,7 @@ check(
         ".875 x .5 in.",
         "sheet: 13 x 17 1/2 in",
         "sheet: 13 x 17 1/2 in.; stone: 10 x 12 1/4 in.",
-    ]
+    ],
 )
 easy_parser.create_diagram("easy_parser.html", show_results_names=True)
 
@@ -985,6 +1016,7 @@ easy_parser.create_diagram("easy_parser.html", show_results_names=True)
 from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
+
 import pyparsing as pp
 
 last = 0
@@ -997,23 +1029,23 @@ for batch_no, batch in enumerate(measurements(last - 1)):
     results = []
     for item in batch.to_dicts():
         base_res = {"M_ID": item["M_ID"], "MEASUREMENTS": item["MEASUREMENTS"]}
-        
+
         (ok, err) = easy_parser.run_tests(
             item["MEASUREMENTS"], print_results=False, full_dump=False
-        ) 
+        )
         if not ok:
-            parsed["Test Error"] = str(err)
+            base_res["Test Error"] = str(err)
 
         try:
-            res = mimsy_string.parse_string(item["MEASUREMENTS"])
-        except pp.ParseException as e: 
+            parsed = easy_parser.parse_string(item["MEASUREMENTS"])
+        except pp.ParseException as e:
             base_res["Parse Error"] = str(e)
             results.append(base_res)
             continue
 
         for f in parsed["facets"]:
             f_res = deepcopy(base_res)
-            f_res["Type"] = f["type"] if "type" in f else "overall"
+            f_res["Type"] = f["type"][0] if "type" in f else "overall"
 
             if not "measurements" in f:
                 results.append(f_res)
@@ -1021,39 +1053,57 @@ for batch_no, batch in enumerate(measurements(last - 1)):
             for m in f["measurements"]:
                 m_res = deepcopy(f_res)
                 units = set()
-                if not "dims" in f:
+                if (not "dims" in m and not "dimsft" in m) or not "units" in m:
                     results.append(m_res)
                     continue
-                
-                for i, d in enumerate(m["dims"]):
+
+                for i, d in enumerate(m["dims" if "dims" in m else "dimsft"]):
                     if i >= 3:
                         break
                     m_res[f"Dimension{i+1}"] = d
-                    units.add(m["units"][min(len(m["units"]) - 1, i)])
+                    units.update(m["units"][min(len(m["units"]) - 1, i)])
 
                 m_res[f"Units"] = ", ".join(units)
                 results.append(m_res)
 
-        pl.DataFrame(
-            results,
-            schema=[
-                ("M_ID", pl.Int64),
-                ("MEASUREMENTS", pl.String),
-                ("Test Error", pl.String),
-                ("Parse Error", pl.String),
-                ("Type", pl.String),
-                ("Units", pl.String),
-                ("Dimension1", pl.String),
-                ("Dimension2", pl.String),
-                ("Dimension3", pl.String),
-            ],
-            # ).write_csv(output / f"{batch_no:03d}.csv")
-        ).write_parquet(output / f"{batch_no:03d}.parquet")
+    pl.DataFrame(
+        results,
+        schema=[
+            ("M_ID", pl.Int64),
+            ("MEASUREMENTS", pl.String),
+            ("Test Error", pl.String),
+            ("Parse Error", pl.String),
+            ("Type", pl.String),
+            ("Units", pl.String),
+            ("Dimension1", pl.String),
+            ("Dimension2", pl.String),
+            ("Dimension3", pl.String),
+        ],
+        # ).write_csv(output / f"{batch_no:03d}.csv")
+    ).write_parquet(output / f"{batch_no:03d}.parquet")
+
+results = pl.read_parquet(output / "*.parquet")
+results.filter(
+    pl.col("Test Error").is_not_null(),
+    pl.col("Parse Error").is_null(),
+).write_csv(output / "maybe_issues.csv")
+results.filter(
+    pl.col("Parse Error").is_not_null(),
+).write_csv(output / "issues.csv")
 
 if is_notebook:
     print(f"{output} done!")
-        
 
-        
+# %%
+import polars as pl
+
+results = pl.read_parquet(output / "*.parquet")
+results.filter(
+    pl.col("Test Error").is_not_null(),
+    pl.col("Parse Error").is_null(),
+).write_csv(output / "maybe_issues.csv")
+results.filter(
+    pl.col("Parse Error").is_not_null(),
+).write_csv(output / "issues.csv")
 
 # %%
