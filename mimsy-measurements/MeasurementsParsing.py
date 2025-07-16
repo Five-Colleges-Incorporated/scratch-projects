@@ -80,6 +80,7 @@ def check(parser, cases, out=None):
         for r in res:
             print(r)
 
+
 ws = pp.White()
 
 dim = pp.Combine(
@@ -100,7 +101,9 @@ feet_unit = pp.Optional(
 )
 imperial_unit = pp.Or([inches_unit, feet_unit])
 single_imperial = pp.OneOrMore(
-    pp.Combine(dim("dims*") + imperial_unit("units*") + pp.Suppress(pp.Optional(ws + "x" + ws)))
+    pp.Combine(
+        dim("dims*") + imperial_unit("units*") + pp.Suppress(pp.Optional(ws + "x" + ws))
+    )
 )
 check(
     single_imperial,
@@ -137,7 +140,9 @@ metric_unit = pp.Optional(
     + pp.one_of(["cm", "cm.", "mm", "mm.", "m", "m."], caseless=True)
 )
 metric = pp.OneOrMore(
-    pp.Combine(dim("dims*") + metric_unit("units*") + pp.Suppress(pp.Optional(ws + "x" + ws)))
+    pp.Combine(
+        dim("dims*") + metric_unit("units*") + pp.Suppress(pp.Optional(ws + "x" + ws))
+    )
 )
 check(metric, ["5cm", "65mm.", "10.4 m. x 15 cm"])
 
@@ -156,7 +161,6 @@ check(
         "65mm.",
         "10.4 m. x 15 cm",
         "20 1/2 x 15 in.; 52.07 x 38.1 cm",
-        "overall: 85 x 79 x 14 in.; cm"
         "1' 3/4\" x 2 ft. 1/2 in",
     ],
 )
@@ -245,11 +249,17 @@ for batch_no, batch in enumerate(measurements(last - 1)):
             for m in f["measurements"]:
                 m_res = deepcopy(f_res)
                 units = set()
-                if (not "dims" in m and not "dimsft" in m) or not "units" in m:
+                if "dimsft" in m:
+                    print(m)
+                    m_res["Feet and Inches"] = True
                     results.append(m_res)
                     continue
 
-                for i, d in enumerate(m["dims" if "dims" in m else "dimsft"]):
+                if (not "dims" in m) or not "units" in m:
+                    results.append(m_res)
+                    continue
+
+                for i, d in enumerate(m["dims"]):
                     if i >= 3:
                         break
                     m_res[f"Dimension{i+1}"] = d
@@ -265,6 +275,7 @@ for batch_no, batch in enumerate(measurements(last - 1)):
             ("MEASUREMENTS", pl.String),
             ("Test Error", pl.String),
             ("Parse Error", pl.String),
+            ("Feet and Inches", pl.Boolean),
             ("Type", pl.String),
             ("Units", pl.String),
             ("Dimension1", pl.String),
@@ -280,7 +291,12 @@ results.filter(
     pl.col("Parse Error").is_null(),
 ).write_csv(output / "maybe_issues.csv")
 results.filter(
-    pl.col("Parse Error").is_not_null(),
+    pl.Expr.or_(
+        pl.col("Parse Error").is_not_null(),
+        pl.col("Feet and Inches"),
+    )
 ).write_csv(output / "issues.csv")
 
 print(f"{output} done!")
+
+# %%
