@@ -44,7 +44,8 @@ class RefreshTokenAuth(httpx.Auth):
             yield request
 
     def _do_auth(self):
-        # del self.hdr["x-okapi-token"]
+        if "x-okapi-token" in self.hdr:
+            del self.hdr["x-okapi-token"]
         res = httpx.post(
             self.fe + "/authn/login-with-expiry",
             headers=self.hdr,
@@ -152,8 +153,8 @@ for l in range(0, 50001, 10000):
             ),
             in_place=True,
         )
-        print()
-        
+        print(" ", res)
+
 results.glimpse()
 results.write_csv("results.csv")
 
