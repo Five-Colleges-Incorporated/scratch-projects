@@ -99,7 +99,7 @@ def run_test(target, limit, endpoint):
             res = client.get(
                 endpoint,
                 params={
-                    "query": f'id>="{gen_id()}"',
+                    "query": f'id>"{gen_id()}" sortBy id asc',
                     "limit": limit,
                 },
             )
