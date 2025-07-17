@@ -74,46 +74,87 @@ def get_client():
 
 
 # %%
-import statistics
 import random
+import statistics
 import time
 from uuid import uuid4
 
 import orjson
 
-target = 500000
-limit = 1000
-with get_client() as client:
 
-    def gen_id():
-        id = str(uuid4())
-        id[0] = random.rand_int(0, 4)
-        return id
+def gen_id():
+    return str(random.randint(0, 4)) + str(uuid4())[1:]
 
-    total = 0
-    start = time.time()
-    call_times = []
-    while total < target:
-        if total % 100000 == 0:
-            print(".", end="")
-            
-        call_start = time.time()
-        res = client.get(
-            "/inventory/instances",
-            params={
-                "query": f'id>="{gen_id()}"',
-                "limit": limit,
-            },
+
+def run_test(target, limit, endpoint):
+    with get_client() as client:
+        total = 0
+        call_times = []
+        start = time.time()
+        while total < target:
+            if total % 100000 == 0:
+                print(".", end="")
+
+            call_start = time.time()
+            res = client.get(
+                endpoint,
+                params={
+                    "query": f'id>="{gen_id()}"',
+                    "limit": limit,
+                },
+            )
+            res.raise_for_status()
+            orjson.loads(res.text)
+            call_times.append(time.time() - call_start)
+
+            total += limit
+
+        return (
+            time.time() - start,
+            min(call_times),
+            statistics.mean(call_times),
+            statistics.median(call_times),
+            max(call_times),
         )
-        res.raise_for_status()
-        orjson.loads(res.text)
-        call_times.append(time.time() - call_start)
-        
-        total += limit
 
-print()
-print("total", time.time() - start)
-print("average", statistics.mean(call_times))
-print("median", statistics.median(call_times))
+
+# %%
+import polars as pl
+
+rs = {
+    "endpoint": pl.Utf8,
+    "limit": pl.Int32,
+    "total": pl.Float32,
+    "per_100k_avg": pl.Float32,
+    "per_100k_med": pl.Float32,
+}
+endpoint = "/inventory/instances"
+results = pl.DataFrame([], schema=rs)
+for l in range(0, 50001, 10000):
+    if l == 0:
+        l = 1000
+    for i in range(0, 5):
+        print(l, " ", end="")
+        res = run_test(500000, l, endpoint)
+        results.vstack(
+            pl.DataFrame(
+                [
+                    [
+                        endpoint,
+                        l,
+                        res[0] / 60,
+                        (100000 / l) * (res[2] / 60),
+                        (100000 / l) * (res[3] / 60),
+                    ]
+                ],
+                orient="row",
+                schema=rs,
+            ),
+            in_place=True,
+        )
+        print()
+        
+results.glimpse()
+results.write_csv("results.csv")
 
 # %%
