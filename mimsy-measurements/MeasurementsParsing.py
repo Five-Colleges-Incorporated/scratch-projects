@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.16.7
+#       jupytext_version: 1.17.2
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -250,7 +250,6 @@ for batch_no, batch in enumerate(measurements(last - 1)):
                 m_res = deepcopy(f_res)
                 units = set()
                 if "dimsft" in m:
-                    print(m)
                     m_res["Feet and Inches"] = True
                     results.append(m_res)
                     continue
@@ -296,6 +295,10 @@ results.filter(
         pl.col("Feet and Inches"),
     )
 ).write_csv(output / "issues.csv")
+results.filter(
+    pl.col("Test Error").is_null(),
+    pl.col("Parse Error").is_null(),
+).write_csv(output / "newly_parsed.csv")
 
 print(f"{output} done!")
 
