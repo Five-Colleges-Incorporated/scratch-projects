@@ -2,6 +2,8 @@
 *.tsv
 *.csv
 *.parquet
+*.json
+*.ndjson
 *.log
 *.mrc
 .env
