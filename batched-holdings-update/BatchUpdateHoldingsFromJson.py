@@ -26,7 +26,7 @@ except:
 print("In a notebook: ", is_notebook)
 
 # %%
-import json
+import orjson
 from pathlib import Path
 
 
@@ -52,7 +52,7 @@ def to_ndjson(json_f: Path):
     with ndjson_f.open("r") as ndj:
         for ndjl in ndj.readlines()[:10]:
             # sanity checking the json viability
-            json.loads(ndjl)
+            orjson.loads(ndjl)
 
 
 to_ndjson(Path("./mod_proxy_urls.json"))
@@ -82,18 +82,19 @@ if is_notebook:
         print("ok connection!")
 
 # %%
+import orjson
 from pathlib import Path
 
 from pyfolioclient import BadRequestError, UnprocessableContentError
 
 
-def do_bulk_update(folio, holdings: list[bytes]):
+def do_bulk_update(folio, holdings: list[str]):
     try:
         hc = len(holdings)
         folio.post_data(
             "/holdings-storage/batch/synchronous",
             params={"upsert": "true"},
-            content=b'{ "holdingsRecords": [' + b", ".join(holdings) + b"]}",
+            payload=orjson.loads('{ "holdingsRecords": [' + ", ".join(holdings) + "]}"),
         )
     except (
         BadRequestError,
@@ -102,7 +103,7 @@ def do_bulk_update(folio, holdings: list[bytes]):
         TimeoutError,
     ) as e:
         if hc == 1:
-            yield (holdings[0], e)
+            yield (holdings[0], e.__cause__ if hasattr(e, "__cause__") else e)
             return
         yield from do_bulk_update(folio, holdings[: hc // 2])
         yield from do_bulk_update(folio, holdings[hc // 2 :])
@@ -114,8 +115,8 @@ if is_notebook:
     ndjson_f = Path("./mod_proxy_urls.ndjson")
     with get_client() as folio, ndjson_f.open("r") as ndj:
         holdings = []
-        for ndjl in ndj.readlines()[:10]:
-            holdings.append(bytes(ndjl, "utf-8"))
+        for ndjl in ndj.readlines()[10:20]:
+            holdings.append(ndjl)
         print([e[1] for e in do_bulk_update(folio, holdings)])
 
 # %%

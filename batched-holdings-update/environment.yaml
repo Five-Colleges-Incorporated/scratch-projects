@@ -5,8 +5,8 @@ channels:
   - nodefaults
 dependencies:
   - python>=3.12,<3.13
-  - polars==1.22.0
   - python-dotenv>=1.0.1,<2
+  - orjson>=3.11.1
   - pip
   - pip:
     - pyfolioclient>=0.1.7,<1
