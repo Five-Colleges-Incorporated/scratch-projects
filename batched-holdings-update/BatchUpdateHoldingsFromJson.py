@@ -147,7 +147,7 @@ def import_ndjson(ndjson_f: Path, output_f: Path):
     schema = {"id": pl.Utf8, "body": pl.Utf8, "error": pl.Utf8}
     errors = pl.DataFrame([], schema)
     with get_client() as folio, ndjson_f.open("r") as ndj:
-        holdings = ndj.readlines()[:20]
+        holdings = ndj.readlines()
 
         def chunks():
             iterator = iter(holdings)
