@@ -26,8 +26,9 @@ except:
 print("In a notebook: ", is_notebook)
 
 # %%
-import orjson
 from pathlib import Path
+
+import orjson
 
 
 def to_ndjson(json_f: Path):
@@ -82,9 +83,9 @@ if is_notebook:
         print("ok connection!")
 
 # %%
-import orjson
 from pathlib import Path
 
+import orjson
 from pyfolioclient import BadRequestError, UnprocessableContentError
 
 
@@ -94,6 +95,7 @@ def do_bulk_update(folio, holdings: list[str]):
         folio.post_data(
             "/holdings-storage/batch/synchronous",
             params={"upsert": "true"},
+            # pyfolioclient requires a dict and doesn't take the raw json string : /
             payload=orjson.loads('{ "holdingsRecords": [' + ", ".join(holdings) + "]}"),
         )
     except (
@@ -103,12 +105,23 @@ def do_bulk_update(folio, holdings: list[str]):
         TimeoutError,
     ) as e:
         if hc == 1:
-            yield (holdings[0], e.__cause__ if hasattr(e, "__cause__") else e)
+            h = orjson.loads(holdings[0])
+            yield (
+                h.get("id"),
+                None if "id" in h else holdings[0],
+                str(e.__cause__ if hasattr(e, "__cause__") else e),
+            )
+            return
+        yield from do_bulk_update(folio, holdings[: hc // 2])
+        yield from do_bulk_update(folio, holdings[hc // 2 :])
+    except orjson.JSONDecodeError as e:
+        if hc == 1:
+            yield (None, holdings[0], str(e))
             return
         yield from do_bulk_update(folio, holdings[: hc // 2])
         yield from do_bulk_update(folio, holdings[hc // 2 :])
     except Exception as e:
-        yield from ((h, e) for h in holdings)
+        yield from ((orjson.loads(h)["id"], None, str(e)) for h in holdings)
 
 
 if is_notebook:
@@ -117,6 +130,42 @@ if is_notebook:
         holdings = []
         for ndjl in ndj.readlines()[10:20]:
             holdings.append(ndjl)
-        print([e[1] for e in do_bulk_update(folio, holdings)])
+        print([e for e in do_bulk_update(folio, holdings)])
+
+# %%
+from datetime import datetime
+from itertools import chain, islice
+from pathlib import Path
+
+import orjson
+import polars as pl
+
+chunk_size = 500
+
+
+def import_ndjson(ndjson_f: Path, output_f: Path):
+    schema = {"id": pl.Utf8, "body": pl.Utf8, "error": pl.Utf8}
+    errors = pl.DataFrame([], schema)
+    with get_client() as folio, ndjson_f.open("r") as ndj:
+        holdings = ndj.readlines()
+
+        def chunks():
+            iterator = iter(holdings)
+            for first in iterator:
+                yield chain([first], islice(iterator, chunk_size - 1))
+
+        for c in chunks():
+            errors.vstack(
+                pl.DataFrame(list(do_bulk_update(folio, list(c))), schema=schema),
+                in_place=True,
+            )
+            print(".", end="")
+
+    errors.sink_csv(output_f)
+
+
+output = Path(datetime.now().strftime("%m%d%H%M%S") + ".csv")
+import_ndjson(Path("./mod_proxy_urls.ndjson"), output)
+print(f"{output} done!")
 
 # %%
