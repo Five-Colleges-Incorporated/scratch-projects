@@ -16,10 +16,6 @@
 # %conda env update -n base --file environment.yaml
 
 # %%
-from dotenv import load_dotenv
-
-load_dotenv(override=True)
-
 is_notebook = False
 try:
     get_ipython()
@@ -61,5 +57,65 @@ def to_ndjson(json_f: Path):
 
 to_ndjson(Path("./mod_proxy_urls.json"))
 print("ndjson conversion done...")
+
+# %%
+import os
+from contextlib import contextmanager
+
+from dotenv import load_dotenv
+from pyfolioclient import FolioBaseClient
+
+
+@contextmanager
+def get_client(env: str = "DEV"):
+    load_dotenv(override=True)
+    fep = os.getenv(f"FOLIO_ENDPOINT_{env}")
+    fte = os.getenv(f"FOLIO_TENANT_{env}")
+    fun = os.getenv(f"FOLIO_USER_{env}")
+    fpw = os.getenv(f"FOLIO_PASSWORD_{env}")
+    with FolioBaseClient(fep, fte, fun, fpw) as folio:
+        yield folio
+
+
+if is_notebook:
+    with get_client():
+        print("ok connection!")
+
+# %%
+from pathlib import Path
+
+from pyfolioclient import BadRequestError, UnprocessableContentError
+
+
+def do_bulk_update(folio, holdings: list[bytes]):
+    try:
+        hc = len(holdings)
+        folio.post_data(
+            "/holdings-storage/batch/synchronous",
+            params={"upsert": "true"},
+            content=b'{ "holdingsRecords": [' + b", ".join(holdings) + b"]}",
+        )
+    except (
+        BadRequestError,
+        UnprocessableContentError,
+        RuntimeError,
+        TimeoutError,
+    ) as e:
+        if hc == 1:
+            yield (holdings[0], e)
+            return
+        yield from do_bulk_update(folio, holdings[: hc // 2])
+        yield from do_bulk_update(folio, holdings[hc // 2 :])
+    except Exception as e:
+        yield from ((h, e) for h in holdings)
+
+
+if is_notebook:
+    ndjson_f = Path("./mod_proxy_urls.ndjson")
+    with get_client() as folio, ndjson_f.open("r") as ndj:
+        holdings = []
+        for ndjl in ndj.readlines()[:10]:
+            holdings.append(bytes(ndjl, "utf-8"))
+        print([e[1] for e in do_bulk_update(folio, holdings)])
 
 # %%
