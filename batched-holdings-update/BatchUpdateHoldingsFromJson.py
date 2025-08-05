@@ -121,7 +121,7 @@ def do_bulk_update(folio, holdings: list[str]):
         yield from do_bulk_update(folio, holdings[: hc // 2])
         yield from do_bulk_update(folio, holdings[hc // 2 :])
     except Exception as e:
-        yield from ((orjson.loads(h)["id"], None, str(e)) for h in holdings)
+        yield from ((orjson.loads(h).get("id"), h, str(e)) for h in holdings)
 
 
 if is_notebook:
@@ -140,28 +140,37 @@ from pathlib import Path
 import orjson
 import polars as pl
 
-chunk_size = 500
+chunk_size = 50
 
 
 def import_ndjson(ndjson_f: Path, output_f: Path):
     schema = {"id": pl.Utf8, "body": pl.Utf8, "error": pl.Utf8}
     errors = pl.DataFrame([], schema)
     with get_client() as folio, ndjson_f.open("r") as ndj:
-        holdings = ndj.readlines()
+        holdings = ndj.readlines()[:20]
 
         def chunks():
             iterator = iter(holdings)
             for first in iterator:
                 yield chain([first], islice(iterator, chunk_size - 1))
 
-        for c in chunks():
+        for i, c in enumerate(chunks()):
             errors.vstack(
-                pl.DataFrame(list(do_bulk_update(folio, list(c))), schema=schema),
+                pl.DataFrame(
+                    list(do_bulk_update(folio, list(c))),
+                    schema=schema,
+                    orient="row",
+                ).filter(
+                    pl.Expr.not_(
+                        pl.col("error").str.starts_with("Client error '409 Conflict'")
+                    )
+                ),
                 in_place=True,
             )
-            print(".", end="")
+            if i % 5 == 0:
+                print(i * chunk_size)
 
-    errors.sink_csv(output_f)
+    errors.write_csv(output_f)
 
 
 output = Path(datetime.now().strftime("%m%d%H%M%S") + ".csv")
